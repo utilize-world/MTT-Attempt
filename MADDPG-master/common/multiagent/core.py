@@ -1,5 +1,8 @@
 import numpy as np
 import math
+
+import numpy.random
+
 from utils import find_index
 
 
@@ -134,9 +137,9 @@ class Agent(Entity):
         # 观察flag
         self.obs_flag = False
         # 观察范围
-        self.obs_range = 90
+        self.obs_range = 50
         # 安全距离
-        self.safe_range = 40
+        self.safe_range = 20
 
 
 # 用来指定那些target
@@ -154,6 +157,7 @@ class target_UAVs(Agent):
         self.action = None
         self.silent = True  # 不能通信，不能决策
         self.be_observed = False  # 定义了自己的状态，是否被观察到
+        self.out = False    # 定义是否出界
 
 
 # multi-agent world
@@ -207,7 +211,7 @@ class World(object):  # 最关键的
         self.bound = 1000
         self.rebound = 10
         self.dim_ac = 4
-        self.Na = 2000
+        self.Na = 500
         # 定义是否在训练，这与状态有关
         self.train = True
 
@@ -268,21 +272,35 @@ class World(object):  # 最关键的
                 target.state.move_angle *= -1
             if target.state.p_pos[1] > high_rebound and target.state.move_angle > 0:
                 target.state.move_angle *= -1
+            # 固定方向运动
+            # target.state.p_pos[0] += target.state.p_vel * math.cos(target.state.move_angle *
+            #                                                        (math.pi / 180)) * self.dt
+            # target.state.p_pos[1] += target.state.p_vel * math.sin(target.state.move_angle *
+            #                                                        (math.pi / 180)) * self.dt
+            # 随机游动，这里取得是
+            if not target.out:    # 如果没出界
+                target.state.move_angle += numpy.random.uniform(-180, 180) / 8  # 每步最大变化±π/8
             target.state.p_pos[0] += target.state.p_vel * math.cos(target.state.move_angle *
                                                                    (math.pi / 180)) * self.dt
             target.state.p_pos[1] += target.state.p_vel * math.sin(target.state.move_angle *
                                                                    (math.pi / 180)) * self.dt
             if target.state.p_pos[0] > self.bound or target.state.p_pos[1] > self.bound:
                 print("target go bound out")
-            if target.state.p_pos[0] < 0 or target.state.p_pos[1] < 0:
+                target.out = True
+            elif target.state.p_pos[0] < 0 or target.state.p_pos[1] < 0:
                 print("target go zero out")
+                target.out = True
+            else:
+                target.out = False
             # 对agent也就是无人机进行更新，位置，角度和
         for i, agent in enumerate(self.agents):
+            agent.state.move_angle += np.float((2 * agent.action.u - self.Na - 1)) / (self.Na - 1) * self.dt * 180
+
             agent.state.p_pos[0] += agent.state.p_vel * math.cos(agent.state.move_angle *
                                                                  (math.pi / 180)) * self.dt
             agent.state.p_pos[1] += agent.state.p_vel * math.sin(agent.state.move_angle *
                                                                  (math.pi / 180)) * self.dt
-            agent.state.move_angle += np.float((2 * agent.action.u - self.Na - 1)) / (self.Na - 1) * self.dt * 180
+
             j = 0
             # set communication state (directly for now)
             # 如果在通信范围内，则可以获得其他所有agent的通信动作(也就是通信信息)
@@ -310,31 +328,37 @@ class World(object):  # 最关键的
                         agent.state.c = np.hstack((agent.state.c, (np.zeros(self.dim_ac))))  # 否则就是0
                     j += 1
             #  判断是否有target在范围中，并选择最近的作为状态信息，这个最近的前提，是未被观察到的agent的最近
+            #  这里存在争议，
             distance_a_t_map = self.distance_cal_target()
             min_dist, min_index = np.min(distance_a_t_map[i]), np.argmin(distance_a_t_map[i])
-            if agent.obs_flag is False:
-                dist_up_index = find_index(distance_a_t_map[i])
-                for value in dist_up_index:
-                    if self.targets_u[int(value)].be_observed:
-                        continue
-                    else:
-                        min_index = int(value)
-                        break
-            if self.train is False:
-                # 如果在执行阶段，只有范围内的数据才能得到
-                if min_dist < agent.obs_range:
-                    agent.state.target_pos = self.targets_u[min_index].state.p_pos
-                    agent.state.target_vel = self.targets_u[min_index].state.p_vel
-                    agent.state.target_angle = self.targets_u[min_index].state.move_angle
-                else:
-                    agent.state.target_pos = np.zeros(self.dim_p)
-                    agent.state.target_vel = 0
-                    agent.state.target_angle = 0
-            else:
-                # 如果在训练阶段，所有的state都是可知的
-                agent.state.target_pos = self.targets_u[min_index].state.p_pos
-                agent.state.target_vel = self.targets_u[min_index].state.p_vel
-                agent.state.target_angle = self.targets_u[min_index].state.move_angle
+            # if agent.obs_flag is False:
+            #     dist_up_index = find_index(distance_a_t_map[i])
+            #     for value in dist_up_index:
+            #         if self.targets_u[int(value)].be_observed:
+            #             continue
+            #         else:
+            #             min_index = int(value)
+            #             break
+            # if self.train is False:
+            #     # 如果在执行阶段，只有范围内的数据才能得到
+            #     if min_dist < agent.obs_range:
+            #         agent.state.target_pos = self.targets_u[min_index].state.p_pos
+            #         agent.state.target_vel = self.targets_u[min_index].state.p_vel
+            #         agent.state.target_angle = self.targets_u[min_index].state.move_angle
+            #     else:
+            #         agent.state.target_pos = np.zeros(self.dim_p)
+            #         agent.state.target_vel = 0
+            #         agent.state.target_angle = 0
+            # else:
+            #     # 如果在训练阶段，所有的state都是可知的
+            #     agent.state.target_pos = self.targets_u[min_index].state.p_pos
+            #     agent.state.target_vel = self.targets_u[min_index].state.p_vel
+            #     agent.state.target_angle = self.targets_u[min_index].state.move_angle
+
+            # 假设所有情况下都知道目标的位置
+            agent.state.target_pos = self.targets_u[min_index].state.p_pos
+            agent.state.target_vel = self.targets_u[min_index].state.p_vel
+            agent.state.target_angle = self.targets_u[min_index].state.move_angle
 
     # 写出计算距离公式, 更新距离表(agent之间的)
     # 根据距离表       UAV\UAV      1   2   3

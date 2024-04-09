@@ -28,8 +28,8 @@ class Scenario(BaseScenario):
             agent.name = 'agent %d' % i
             agent.collide = True
             agent.silent = False
-            agent.obs_range = 80
-            agent.safe_range = 40
+            agent.obs_range = 50
+            agent.safe_range = 20
             # agent.adversary = True if i < num_adversaries else False    # 前面的为追踪者
             agent.size = 12  # if agent.adversary else 0.05    # ?这个尺寸有什么用
             # agent.accel = 3.0 if agent.adversary else 4.0     # 不需要加速度，可以为0
@@ -147,7 +147,7 @@ class Scenario(BaseScenario):
         :param world:所在环境
         :return:
         """
-        dis_reward = - 0.3
+        dis_reward = 0
         safe_reward = 0
         bound_reward = 0
         judge_rew = 3  # 奖励，用来控制边界
@@ -181,15 +181,15 @@ class Scenario(BaseScenario):
         # 如果是在训练则返回对应的奖励，全知条件下;反之执行过程中，只有在观察到的条件下才能获得奖励
         min_dis = float(min_dis)
         if world.train:
-            dis_reward = (agent.obs_range - min_dis) / min(agent.obs_range, min_dis)  # 返回与距离有关的奖励
+            dis_reward = 0.35 * (agent.obs_range - min_dis) / min(agent.obs_range, min_dis)  # 返回与距离有关的奖励
             # dis_reward = float((agent.obs_range - min_dis)) / (min_dis + agent.obs_range * 0.25)  # 修改奖励
             # dis_reward = math.exp(agent.obs_range - min_dis)
 
             if agent.obs_flag:
-                dis_reward += (agent.obs_range - min_dis) / agent.obs_range + 0.5
+                dis_reward += 2
         else:
             if agent.obs_flag:
-                dis_reward = (agent.obs_range - min_dis) / float(agent.obs_range) + 1
+                dis_reward = (agent.obs_range - min_dis) / float(agent.obs_range) + 2
                 if min_dis == np.min(dis_map_agent):  # 如果当前的就是最近的，则额外奖励
                     dis_reward += 2
 
