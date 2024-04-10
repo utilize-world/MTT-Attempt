@@ -294,7 +294,7 @@ class World(object):  # 最关键的
                 target.out = False
             # 对agent也就是无人机进行更新，位置，角度和
         for i, agent in enumerate(self.agents):
-            agent.state.move_angle += np.float((2 * agent.action.u - self.Na - 1)) / (self.Na - 1) * self.dt * 180
+            agent.state.move_angle += np.float((2 * agent.action.u - self.Na - 1)) / (self.Na - 1) * 180 * self.dt
 
             agent.state.p_pos[0] += agent.state.p_vel * math.cos(agent.state.move_angle *
                                                                  (math.pi / 180)) * self.dt

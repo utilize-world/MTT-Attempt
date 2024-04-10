@@ -6,9 +6,14 @@ import random
 import torch
 from draw_plt import collect_data_and_save_drawings
 from utils import clear_folder
+seed = 0
 
 if __name__ == '__main__':
     # get the params
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+
     args = get_args()
     index = args.training_times    # 训练次数
     print(args)

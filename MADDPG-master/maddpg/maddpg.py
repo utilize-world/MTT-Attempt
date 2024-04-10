@@ -1,6 +1,6 @@
 import torch
 import os
-from maddpg.actor_critic import Actor, Critic
+from .actor_critic import Actor, Critic
 
 
 class MADDPG:
@@ -66,6 +66,8 @@ class MADDPG:
 
         # calculate the target Q value function
         u_next = []
+
+
         with torch.no_grad():
             # 得到下一个状态对应的动作
             index = 0

@@ -18,7 +18,7 @@ class Agent:
             pi = self.policy.actor_network(inputs).squeeze(0)   # 压缩第0位的一维向量,这里policy的输出是tensor(64,),最后变成(1,)
             # print('{} : {}'.format(self.name, pi))
             u = pi.cpu().numpy()
-            noise = noise_rate * ((self.args.high_action-self.args.low_action)/2) * np.random.randn(*u.shape) # gaussian noise
+            noise = 0.2 * noise_rate * ((self.args.high_action-self.args.low_action)/2) * np.random.randn(*u.shape) # gaussian noise
             u += noise
             u = np.clip(u, np.int(-(self.args.high_action-self.args.low_action)/2),
                         np.int((self.args.high_action-self.args.low_action)/2))
