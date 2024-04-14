@@ -54,7 +54,7 @@ def make_env(args):
     for content in env.action_space:
         action_shape.append(content)
     args.action_shape = action_shape[:args.n_agents]  # 每一维代表该agent的act维度
-    args.action_shape = [1 for i in range(args.n_agents)]  # 这里直接设置动作维度为1，所以前面的可能没用了
+    args.action_shape = [2 for i in range(args.n_agents)]  # 这里直接设置动作维度为1，所以前面的可能没用了
     args.high_action = world.Na
     args.low_action = 1
     return env, args

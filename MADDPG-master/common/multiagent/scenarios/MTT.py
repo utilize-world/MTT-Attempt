@@ -16,14 +16,16 @@ class Scenario(BaseScenario):
         world.bound = 1000  # 尝试改变world的规模
         # set any world properties first
         # world.dim_c = 2     # 通信维度在这里也能定义，之前在core中已经定义过为3*agent的个数，这里将其注释掉
-        num_uav = 3  # 就是UAVs个数
-        num_target = 3  # 这个是target个数
+        num_uav = 2  # 就是UAVs个数
+        num_target = 1  # 这个是target个数
 
         num_landmarks = 0  # 没有阻挡物
+
 
         # add agents
         world.agents = [Agent() for i in range(num_uav)]
         world.targets_u = [target_UAVs() for i in range(num_target)]
+        world.set_comm_dimension()
         for i, agent in enumerate(world.agents):
             agent.name = 'agent %d' % i
             agent.collide = True
@@ -66,7 +68,7 @@ class Scenario(BaseScenario):
         # 初始化各实体状态
         for agent in world.agents:
             agent.state.p_pos = np.random.uniform(bound_ad_value, world.bound - bound_ad_value, world.dim_p)
-            agent.state.p_vel = 60  # 注意这里的设置将其定义为常数
+            agent.state.p_vel = 50  # 注意这里的设置将其定义为常数
             agent.state.move_angle = np.random.uniform(-180, 180, 1)  # 取-180到180
             agent.state.c = np.zeros(world.dim_c)
             agent.state.target_angle = 0
@@ -75,6 +77,8 @@ class Scenario(BaseScenario):
             target.state.p_pos = np.random.uniform(bound_ad_value, world.bound - bound_ad_value, world.dim_p)
             target.state.p_vel = 40
             target.state.move_angle = np.random.uniform(-180, 180, 1)  # 唯一与agent的不同就是速度稍慢
+            target.state.move_angle = 10    # 固定角度，用来测试
+            target.state.p_pos = [500, 500]
         for i, landmark in enumerate(world.landmarks):
             if not landmark.boundary:
                 landmark.state.p_pos = np.random.uniform(-0.9, +0.9, world.dim_p)
@@ -180,18 +184,15 @@ class Scenario(BaseScenario):
 
         # 如果是在训练则返回对应的奖励，全知条件下;反之执行过程中，只有在观察到的条件下才能获得奖励
         min_dis = float(min_dis)
-        if world.train:
-            dis_reward = 0.35 * (agent.obs_range - min_dis) / min(agent.obs_range, min_dis)  # 返回与距离有关的奖励
-            # dis_reward = float((agent.obs_range - min_dis)) / (min_dis + agent.obs_range * 0.25)  # 修改奖励
-            # dis_reward = math.exp(agent.obs_range - min_dis)
 
-            if agent.obs_flag:
-                dis_reward += 2
-        else:
-            if agent.obs_flag:
-                dis_reward = (agent.obs_range - min_dis) / float(agent.obs_range) + 2
-                if min_dis == np.min(dis_map_agent):  # 如果当前的就是最近的，则额外奖励
-                    dis_reward += 2
+        dis_reward = 0.35 * (agent.obs_range - min_dis) / min(agent.obs_range, min_dis)  # 返回与距离有关的奖励
+        dis_reward = -min_dis * 0.01
+        # dis_reward = float((agent.obs_range - min_dis)) / (min_dis + agent.obs_range * 0.25)  # 修改奖励
+        # dis_reward = math.exp(agent.obs_range - min_dis)
+
+        if agent.obs_flag:
+            dis_reward += 1
+
 
         # distance reward-------------------
 
@@ -227,7 +228,7 @@ class Scenario(BaseScenario):
                 safe_reward += np.float((distance - agent.safe_range)) / np.float(agent.safe_range) - 0.3
         #   三种奖励加起来就是每个agent的奖励
         reward = dis_reward + safe_reward + bound_reward
-
+        reward = dis_reward # 仅考虑距离，用来测试
         # 测试单步最低的奖励，在出界后到底是什么情况。
 
         # low_reward = reward

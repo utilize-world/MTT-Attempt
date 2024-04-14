@@ -49,6 +49,7 @@ class Action(object):
         #
 
 
+
 # properties and state of physical world entity
 class Entity(object):
     def __init__(self):
@@ -210,8 +211,8 @@ class World(object):  # 最关键的
         # 边界
         self.bound = 1000
         self.rebound = 10
-        self.dim_ac = 4
-        self.Na = 500
+        self.dim_ac = 5
+        self.Na = 20
         # 定义是否在训练，这与状态有关
         self.train = True
 
@@ -229,6 +230,10 @@ class World(object):  # 最关键的
     @property
     def scripted_agents(self):
         return [agent for agent in self.agents if agent.action_callback is not None]
+
+    # 设置当前的通信维度
+    def set_comm_dimension(self):
+        self.dim_c = len(self.agents) * self.dim_ac
 
     # update state of the world
     def step(self):
@@ -261,7 +266,6 @@ class World(object):  # 最关键的
         high_rebound = self.bound - low_rebound  # 这两个参数用来控制target的回弹
         for target in self.targets_u:
             # 位置更新,目标的位置
-            #
             if (target.state.p_pos[0] < low_rebound and target.state.move_angle > 90) or \
                     (target.state.p_pos[0] > high_rebound and 0 < target.state.move_angle < 90):
                 target.state.move_angle = (180 - target.state.move_angle)  # 反弹
@@ -273,17 +277,20 @@ class World(object):  # 最关键的
             if target.state.p_pos[1] > high_rebound and target.state.move_angle > 0:
                 target.state.move_angle *= -1
             # 固定方向运动
-            # target.state.p_pos[0] += target.state.p_vel * math.cos(target.state.move_angle *
-            #                                                        (math.pi / 180)) * self.dt
-            # target.state.p_pos[1] += target.state.p_vel * math.sin(target.state.move_angle *
-            #                                                        (math.pi / 180)) * self.dt
-            # 随机游动，这里取得是
-            if not target.out:    # 如果没出界
-                target.state.move_angle += numpy.random.uniform(-180, 180) / 8  # 每步最大变化±π/8
+            # 固定方向为指定角度：一直保持
+
+            # test——code
             target.state.p_pos[0] += target.state.p_vel * math.cos(target.state.move_angle *
                                                                    (math.pi / 180)) * self.dt
             target.state.p_pos[1] += target.state.p_vel * math.sin(target.state.move_angle *
                                                                    (math.pi / 180)) * self.dt
+            # # 随机游动，这里取得是
+            # if not target.out:    # 如果没出界
+            #     target.state.move_angle += numpy.random.uniform(-180, 180) / 8  # 每步最大变化±π/8
+            # target.state.p_pos[0] += target.state.p_vel * math.cos(target.state.move_angle *
+            #                                                        (math.pi / 180)) * self.dt
+            # target.state.p_pos[1] += target.state.p_vel * math.sin(target.state.move_angle *
+            #                                                        (math.pi / 180)) * self.dt
             if target.state.p_pos[0] > self.bound or target.state.p_pos[1] > self.bound:
                 print("target go bound out")
                 target.out = True
@@ -294,8 +301,8 @@ class World(object):  # 最关键的
                 target.out = False
             # 对agent也就是无人机进行更新，位置，角度和
         for i, agent in enumerate(self.agents):
-            agent.state.move_angle += np.float((2 * agent.action.u - self.Na - 1)) / (self.Na - 1) * 180 * self.dt
-
+            agent.state.move_angle += np.float((2 * agent.action.u[0] - self.Na - 1)) / (self.Na - 1) * 180 * self.dt
+            agent.state.p_vel += np.float((2 * agent.action.u[1] - self.Na - 1)) / (self.Na - 1) * 5 * self.dt  # 最大加速度为±5
             agent.state.p_pos[0] += agent.state.p_vel * math.cos(agent.state.move_angle *
                                                                  (math.pi / 180)) * self.dt
             agent.state.p_pos[1] += agent.state.p_vel * math.sin(agent.state.move_angle *

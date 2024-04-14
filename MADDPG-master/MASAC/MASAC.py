@@ -35,7 +35,7 @@ class MASAC:
         real_o_next = o_next
 
         with torch.no_grad():
-            for
+            pass
 
 class policy_net:
     """

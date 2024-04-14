@@ -120,7 +120,7 @@ class Runner:
                 plt.close()  # 不用每次都跳出来
 
             self.noise = max(0.05, self.noise - 0.0000005)
-            self.epsilon = max(0.05, self.epsilon - 0.0000005)
+            self.epsilon = max(0.05, self.epsilon - 0.00005)
             np.save(self.save_path + '/returns.pkl', returns)
         rewards_epi = rewards_list[1:]
         return rewards_epi
