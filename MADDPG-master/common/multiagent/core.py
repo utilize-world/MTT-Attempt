@@ -138,9 +138,9 @@ class Agent(Entity):
         # 观察flag
         self.obs_flag = False
         # 观察范围
-        self.obs_range = 50
+        self.obs_range = 3
         # 安全距离
-        self.safe_range = 20
+        self.safe_range = 1
 
 
 # 用来指定那些target
@@ -207,12 +207,12 @@ class World(object):  # 最关键的
         # 通信表，用来表示与所有agent的通信的逻辑关系
         self.comm_map = np.zeros((len(self.agents), len(self.agents)))
         # 通信范围
-        self.comm_range = 150
+        self.comm_range = 5
         # 边界
-        self.bound = 1000
-        self.rebound = 10
+        self.bound = 5
+        self.rebound = 0.25
         self.dim_ac = 5
-        self.Na = 20
+        self.Na = 10
         # 定义是否在训练，这与状态有关
         self.train = True
 
@@ -302,7 +302,7 @@ class World(object):  # 最关键的
             # 对agent也就是无人机进行更新，位置，角度和
         for i, agent in enumerate(self.agents):
             agent.state.move_angle += np.float((2 * agent.action.u[0] - self.Na - 1)) / (self.Na - 1) * 180 * self.dt
-            agent.state.p_vel += np.float((2 * agent.action.u[1] - self.Na - 1)) / (self.Na - 1) * 5 * self.dt  # 最大加速度为±5
+            agent.state.p_vel += np.float((2 * agent.action.u[1] - self.Na - 1)) / (self.Na - 1) * 0.05 * self.dt  # 最大加速度为±5
             agent.state.p_pos[0] += agent.state.p_vel * math.cos(agent.state.move_angle *
                                                                  (math.pi / 180)) * self.dt
             agent.state.p_pos[1] += agent.state.p_vel * math.sin(agent.state.move_angle *
@@ -411,9 +411,12 @@ class World(object):  # 最关键的
                 distance_a_t = np.sqrt(np.square(agent.state.p_pos[0] - target.state.p_pos[0]) +
                                        np.square(agent.state.p_pos[1] - target.state.p_pos[1]))
                 dm.append(distance_a_t)
-                if distance_a_t < agent.obs_range and target.be_observed == False:
+                if distance_a_t <= agent.obs_range:
+                # if distance_a_t < agent.obs_range and target.be_observed == False:
                     agent.obs_flag = True
-                    target.be_observed = True
+                    # target.be_observed = True
+                else:
+                    agent.obs_flag = False
         dm = np.array(dm)
         distance_a_t_map = dm.reshape((len(self.agents), len(self.targets_u)))  # 最终会生成距离表
         return distance_a_t_map

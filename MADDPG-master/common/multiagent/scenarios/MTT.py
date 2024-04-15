@@ -12,8 +12,8 @@ class Scenario(BaseScenario):
         :return: world
         """
         world = World()
-        world.comm_range = 80
-        world.bound = 1000  # 尝试改变world的规模
+        world.comm_range = 0.4
+        world.bound = 5  # 尝试改变world的规模
         # set any world properties first
         # world.dim_c = 2     # 通信维度在这里也能定义，之前在core中已经定义过为3*agent的个数，这里将其注释掉
         num_uav = 2  # 就是UAVs个数
@@ -30,16 +30,16 @@ class Scenario(BaseScenario):
             agent.name = 'agent %d' % i
             agent.collide = True
             agent.silent = False
-            agent.obs_range = 50
-            agent.safe_range = 20
+            agent.obs_range = 0.5
+            agent.safe_range = 0.2
             # agent.adversary = True if i < num_adversaries else False    # 前面的为追踪者
-            agent.size = 12  # if agent.adversary else 0.05    # ?这个尺寸有什么用
+            agent.size = 0.06  # if agent.adversary else 0.05    # ?这个尺寸有什么用
             # agent.accel = 3.0 if agent.adversary else 4.0     # 不需要加速度，可以为0
             # agent.accel = 20.0 if agent.adversary else 25.0
             agent.max_speed = 1.0  # if agent.adversary else 1.3   # 最大速度，速度应设置为恒定，待修改
         for i, target in enumerate(world.targets_u):
             target.name = 'target %d' % i
-            target.size = 10
+            target.size = 0.05
         # add landmarks 这里应该没有
         world.landmarks = [Landmark() for i in range(num_landmarks)]
         # for i, landmark in enumerate(world.landmarks):
@@ -57,7 +57,7 @@ class Scenario(BaseScenario):
         这个是最关键的函数，是环境各变量初始化的步骤
         关于初始化的数据，仍有待考虑
         """
-        bound_ad_value = 100  # 这个用来调整随机生成时边界值
+        bound_ad_value = 0.5  # 这个用来调整随机生成时边界值
         # 定义了各实体的颜色
         for i, agent in enumerate(world.agents):
             agent.color = np.array([0.35, 0.85, 0.35])
@@ -68,17 +68,18 @@ class Scenario(BaseScenario):
         # 初始化各实体状态
         for agent in world.agents:
             agent.state.p_pos = np.random.uniform(bound_ad_value, world.bound - bound_ad_value, world.dim_p)
-            agent.state.p_vel = 50  # 注意这里的设置将其定义为常数
+            # agent.state.p_pos = np.random.uniform(5, 10, world.dim_p)
+            agent.state.p_vel = 0.25  # 注意这里的设置将其定义为常数
             agent.state.move_angle = np.random.uniform(-180, 180, 1)  # 取-180到180
             agent.state.c = np.zeros(world.dim_c)
             agent.state.target_angle = 0
             agent.state.target_pos = np.zeros(world.dim_p)
         for target in world.targets_u:
             target.state.p_pos = np.random.uniform(bound_ad_value, world.bound - bound_ad_value, world.dim_p)
-            target.state.p_vel = 40
+            target.state.p_vel = 0
             target.state.move_angle = np.random.uniform(-180, 180, 1)  # 唯一与agent的不同就是速度稍慢
-            target.state.move_angle = 10    # 固定角度，用来测试
-            target.state.p_pos = [500, 500]
+            target.state.move_angle = 1    # 固定角度，用来测试
+            target.state.p_pos = [0.5, 2.5]
         for i, landmark in enumerate(world.landmarks):
             if not landmark.boundary:
                 landmark.state.p_pos = np.random.uniform(-0.9, +0.9, world.dim_p)
@@ -165,7 +166,7 @@ class Scenario(BaseScenario):
         # --------------------distance reward
         dis_map = world.distance_cal_target()
         # 这个方法是后来写的,用来更新所有的观察状态，被观察到的target将不会被其他agent观察到，就是只会被最近的agent观察到来计算奖励
-        world.update_observed_state(dis_map, agent.obs_range)
+        # world.update_observed_state(dis_map, agent.obs_range)
         # 所以下面有些步骤可以优化
         dis_map_agent = dis_map[agent_index]  # 就是对应id的那一行
         index_up_order = find_index(dis_map_agent)  # 返回距离由小到大的顺序index
@@ -185,12 +186,16 @@ class Scenario(BaseScenario):
         # 如果是在训练则返回对应的奖励，全知条件下;反之执行过程中，只有在观察到的条件下才能获得奖励
         min_dis = float(min_dis)
 
-        dis_reward = 0.35 * (agent.obs_range - min_dis) / min(agent.obs_range, min_dis)  # 返回与距离有关的奖励
-        dis_reward = -min_dis * 0.01
+        dis_reward = (agent.obs_range - min_dis) / max(agent.obs_range, min_dis)  # 返回与距离有关的奖励
+        if dis_reward < -1:
+            print("abnormal reward")
+
+        dis_reward = -min_dis * 0.1
         # dis_reward = float((agent.obs_range - min_dis)) / (min_dis + agent.obs_range * 0.25)  # 修改奖励
         # dis_reward = math.exp(agent.obs_range - min_dis)
 
         if agent.obs_flag:
+            print("detected target")
             dis_reward += 1
 
 
@@ -228,7 +233,7 @@ class Scenario(BaseScenario):
                 safe_reward += np.float((distance - agent.safe_range)) / np.float(agent.safe_range) - 0.3
         #   三种奖励加起来就是每个agent的奖励
         reward = dis_reward + safe_reward + bound_reward
-        reward = dis_reward # 仅考虑距离，用来测试
+
         # 测试单步最低的奖励，在出界后到底是什么情况。
 
         # low_reward = reward
@@ -239,7 +244,7 @@ class Scenario(BaseScenario):
         if bound_reward < 0:
             print("out of boundary, agent:", agent_index, 'value', bound_reward)
 
-        return reward
+        return dis_reward
 
     # 以下是对手的奖励，这里也没用
     # def adversary_reward(self, agent, world):
@@ -287,11 +292,15 @@ class Scenario(BaseScenario):
         :param agent:
         :return: 拼接后的观察空间 1*21
         """
-        comm = agent.state.c  # 12
+        comm = agent.state.c  # 每个comm的维度为10，位置二维，角度，动作二维，以及其他的agent的维度？
         target_p = agent.state.target_pos  # 2
         agent_p = agent.state.p_pos  # 2
+        obs = np.hstack((agent_p, agent.state.move_angle, target_p, agent.state.target_angle))
+        obs_cat_com = np.hstack((agent_p, agent.state.move_angle, target_p, agent.state.target_angle, comm))
         # 18
-        return np.hstack((agent_p, agent.state.move_angle, target_p, agent.state.target_angle, comm))
+        # 这里先不考虑通信
+        # return np.hstack((agent_p, agent.state.move_angle, target_p, agent.state.target_angle, comm))
+        return obs_cat_com
 
     # def observation(self, agent, world):
     #     """
@@ -301,12 +310,14 @@ class Scenario(BaseScenario):
     #     :return:
     #     """
     def done_judge(self, world):
-        target = self.get_target(world)
+        agents = self.get_agent(world)
         flag = True
-        for target_u in target:
-            if target_u.be_observed:
+        for agent in agents:
+            if agent.obs_flag:
                 continue
             else:
                 flag = False
                 break
+        if flag:
+            print("all obs")
         return flag

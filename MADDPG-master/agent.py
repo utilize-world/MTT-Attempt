@@ -14,11 +14,11 @@ class Agent:
         if np.random.uniform() < epsilon:
             u = np.random.uniform(self.args.low_action, self.args.high_action, self.args.action_shape[self.agent_id])
         else:
-            inputs = torch.tensor(o, dtype=torch.float32).unsqueeze(0)  # 给第0位添加一维向量，本来o是(18,)，现在是tensor(1,18)
-            pi = self.policy.actor_network(inputs).squeeze(0)   # 压缩第0位的一维向量,这里policy的输出是tensor(64,),最后变成(1,)
+            inputs = torch.tensor(o, dtype=torch.float32).unsqueeze(0)  # 给第0位添加一维向量，本来o是(18,)，现在是tensor(1,observation shape)
+            pi = self.policy.actor_network(inputs).squeeze(0)   # 压缩第0位的一维向量,这里policy的输出是tensor(64,action_shape),最后变成(1,action_shape)
             # print('{} : {}'.format(self.name, pi))
             u = pi.cpu().numpy()
-            noise = noise_rate * ((self.args.high_action-self.args.low_action)/2) * np.random.randn(*u.shape) # gaussian noise
+            noise = 1.2 * noise_rate * ((self.args.high_action-self.args.low_action)/2) * np.random.randn(*u.shape) # gaussian noise
             u += noise
             u = np.clip(u, np.int(-(self.args.high_action-self.args.low_action)/2),
                         np.int((self.args.high_action-self.args.low_action)/2))

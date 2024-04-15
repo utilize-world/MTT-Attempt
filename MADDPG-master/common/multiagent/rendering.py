@@ -57,6 +57,7 @@ class Viewer(object):
         self.width = width
         self.height = height
         self.window = pyglet.window.Window(width=width, height=height, display=display, caption="MTT")
+        # self.window.set_fullscreen(True)
         self.window.on_close = self.window_closed_by_user  # 这部分代码全是gym里面的
         # 如果调试不了，File——Settings——Build,Execution,——Python Debugger里边的Gevent compatible这个选项打勾
         # 这里修改了matplotlib，

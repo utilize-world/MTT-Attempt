@@ -78,7 +78,7 @@ class Runner:
                 for re in r:
                     re += +100
             rewards += float(sum(r)) / float(len(self.agents))  # 这里的 reward是一个episode的reward
-            train_returns.append(int(rewards))                      # 这里的train——returns是取每个时间步的reward
+            train_returns.append(rewards)                      # 这里的train——returns是取每个时间步的reward
             train_returns_clip = train_returns[-800:]   # 取最后1000个时间步
 
 
