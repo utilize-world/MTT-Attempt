@@ -69,14 +69,16 @@ class Scenario(BaseScenario):
         for agent in world.agents:
             agent.state.p_pos = np.random.uniform(bound_ad_value, world.bound - bound_ad_value, world.dim_p)
             # agent.state.p_pos = np.random.uniform(5, 10, world.dim_p)
-            agent.state.p_vel = 0.25  # 注意这里的设置将其定义为常数
-            agent.state.move_angle = np.random.uniform(-180, 180, 1)  # 取-180到180
+            agent.state.p_vel = np.random.uniform(-0.2, 0.2, 1)  # 注意这里的设置将其定义为常数
+            #agent.state.move_angle = np.random.uniform(-180, 180, 1)  # 取-180到180
+            # 这里修改了，move_angle和p——vel分别对应速度
+            agent.state.move_angle = np.random.uniform(-0.2, 0.2, 1)
             agent.state.c = np.zeros(world.dim_c)
             agent.state.target_angle = 0
             agent.state.target_pos = np.zeros(world.dim_p)
         for target in world.targets_u:
             target.state.p_pos = np.random.uniform(bound_ad_value, world.bound - bound_ad_value, world.dim_p)
-            target.state.p_vel = 0
+            target.state.p_vel = 0.2
             target.state.move_angle = np.random.uniform(-180, 180, 1)  # 唯一与agent的不同就是速度稍慢
             target.state.move_angle = 1    # 固定角度，用来测试
             target.state.p_pos = [0.5, 2.5]
@@ -187,16 +189,17 @@ class Scenario(BaseScenario):
         min_dis = float(min_dis)
 
         dis_reward = (agent.obs_range - min_dis) / max(agent.obs_range, min_dis)  # 返回与距离有关的奖励
+        dis_reward = min(math.exp(-(min_dis-agent.obs_range)), 1)
         if dis_reward < -1:
             print("abnormal reward")
 
-        dis_reward = -min_dis * 0.1
+        # dis_reward = -min(0.2*min_dis, 1)
         # dis_reward = float((agent.obs_range - min_dis)) / (min_dis + agent.obs_range * 0.25)  # 修改奖励
         # dis_reward = math.exp(agent.obs_range - min_dis)
 
         if agent.obs_flag:
             print("detected target")
-            dis_reward += 1
+            dis_reward += 5
 
 
         # distance reward-------------------
@@ -295,8 +298,9 @@ class Scenario(BaseScenario):
         comm = agent.state.c  # 每个comm的维度为10，位置二维，角度，动作二维，以及其他的agent的维度？
         target_p = agent.state.target_pos  # 2
         agent_p = agent.state.p_pos  # 2
+        vel = agent.state.p_vel # 1
         obs = np.hstack((agent_p, agent.state.move_angle, target_p, agent.state.target_angle))
-        obs_cat_com = np.hstack((agent_p, agent.state.move_angle, target_p, agent.state.target_angle, comm))
+        obs_cat_com = np.hstack((agent_p, vel, agent.state.move_angle, target_p, agent.state.target_angle, comm))
         # 18
         # 这里先不考虑通信
         # return np.hstack((agent_p, agent.state.move_angle, target_p, agent.state.target_angle, comm))

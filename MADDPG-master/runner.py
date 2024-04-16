@@ -7,24 +7,26 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from common.utils import check_agent_bound
-
+from maddpg.maddpg import MADDPG
+from MASAC.MASAC import MASAC
 
 class Runner:
     """
     input: (args, env)
     """
-    def __init__(self, args, env):
+    def __init__(self, args, env, algorithm):
         self.args = args
         self.noise = args.noise_rate
         self.epsilon = args.epsilon
         self.episode_limit = args.max_episode_len
         self.env = env
-        self.agents = self._init_agents()
+        self.algorithm = algorithm
+        self.agents = self._init_agents(self.algorithm)
         self.buffer = Buffer(args)
-        self.save_path = self.args.save_dir + '/' + self.args.scenario_name
+        self.save_path = self.args.save_dir + '/' + self.args.scenario_name + '/' + self.algorithm
         ## 规定存放csv的路径位置以及存放fig的位置
-        self.csv_save_dir = self.args.csv_save_dir + '/' + self.args.scenario_name
-        self.fig_save_dir = self.args.fig_save_dir + '/' + self.args.scenario_name
+        self.csv_save_dir = self.args.csv_save_dir + '/' + self.args.scenario_name+ '/' + self.algorithm
+        self.fig_save_dir = self.args.fig_save_dir + '/' + self.args.scenario_name+ '/' + self.algorithm
 
         if not os.path.exists(self.save_path):
             os.makedirs(self.save_path)
@@ -33,11 +35,18 @@ class Runner:
         if not os.path.exists(self.fig_save_dir):
             os.makedirs(self.fig_save_dir)
 
-    def _init_agents(self):
+    def _init_agents(self, algorithms):
         agents = []
-        for i in range(self.args.n_agents):
-            agent = Agent(i, self.args)
-            agents.append(agent)
+        if algorithms == "MADDPG":
+            for i in range(self.args.n_agents):
+                policy = MADDPG(self.args, i)
+                agent = Agent(i, self.args, policy, algorithms)
+                agents.append(agent)
+        elif algorithms == "MASAC":
+            policy = MASAC(self.args)   # 采用共享参数的方式
+            for i in range(self.args.n_agents):
+                agent = Agent(i, self.args, policy, algorithms)
+                agents.append(agent)
         return agents
 
     def run(self):
@@ -89,7 +98,7 @@ class Runner:
                 for agent in self.agents:
                     other_agents = self.agents.copy()
                     other_agents.remove(agent)
-                    agent.learn(transitions, other_agents)
+                    agent.learn(transitions, other_agents, self.algorithm)
             if time_step > 0 and time_step % self.args.evaluate_rate == 0:
                 returns.append(self.evaluate())
 

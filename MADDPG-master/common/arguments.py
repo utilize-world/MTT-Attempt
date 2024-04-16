@@ -12,7 +12,7 @@ def get_args():
     parser.add_argument("--training-times", type=int, default=20, help="numbers of Training")
     # Environment
     parser.add_argument("--scenario-name", type=str, default="MTT", help="name of the scenario script")
-    parser.add_argument("--max-episode-len", type=int, default=500, help="maximum episode length")
+    parser.add_argument("--max-episode-len", type=int, default=1000, help="maximum episode length")
     parser.add_argument("--time-steps", type=int, default=200000, help="number of time steps")
     # 一个地图最多env.n个agents，用户可以定义min(env.n,num-adversaries)个敌人，剩下的是好的agent
     parser.add_argument("--num-adversaries", type=int, default=0, help="number of adversaries")
@@ -28,6 +28,7 @@ def get_args():
     # SAC temperature factor
     parser.add_argument("--alpha", type=float, default=0.2, help="Entropy regularization coefficient")
     parser.add_argument("--autotune", type=bool, default=False, help="automatic tuning of the entropy coefficient")
+    parser.add_argument("--update-interval", type=int, default=1, help="regulate the update of policy network")
     # Checkpointing
     parser.add_argument("--save-dir", type=str, default="./model", help="directory in which training state and model should be saved")
     parser.add_argument("--save-rate", type=int, default=2000, help="save model once every time this many episodes are completed")

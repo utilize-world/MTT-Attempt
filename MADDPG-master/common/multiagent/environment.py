@@ -101,7 +101,7 @@ class MultiAgentEnv(gym.Env):
             # 传递动作
             agent.action.u = action_n[i]
             agent.action.c = np.hstack(
-                (agent.state.p_pos, agent.state.move_angle, agent.action.u))
+                (agent.state.p_pos, agent.state.p_vel, agent.state.move_angle, agent.action.u))
         # advance world state
         self.world.env_step()
         # record observation for each agent

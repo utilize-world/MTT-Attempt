@@ -211,7 +211,7 @@ class World(object):  # 最关键的
         # 边界
         self.bound = 5
         self.rebound = 0.25
-        self.dim_ac = 5
+        self.dim_ac = 6
         self.Na = 10
         # 定义是否在训练，这与状态有关
         self.train = True
@@ -301,13 +301,15 @@ class World(object):  # 最关键的
                 target.out = False
             # 对agent也就是无人机进行更新，位置，角度和
         for i, agent in enumerate(self.agents):
-            agent.state.move_angle += np.float((2 * agent.action.u[0] - self.Na - 1)) / (self.Na - 1) * 180 * self.dt
-            agent.state.p_vel += np.float((2 * agent.action.u[1] - self.Na - 1)) / (self.Na - 1) * 0.05 * self.dt  # 最大加速度为±5
-            agent.state.p_pos[0] += agent.state.p_vel * math.cos(agent.state.move_angle *
-                                                                 (math.pi / 180)) * self.dt
-            agent.state.p_pos[1] += agent.state.p_vel * math.sin(agent.state.move_angle *
-                                                                 (math.pi / 180)) * self.dt
-
+            agent.state.move_angle += np.float((2 * agent.action.u[0] - self.Na - 1)) / (self.Na - 1) * 0.1 * self.dt
+            agent.state.p_vel += np.float((2 * agent.action.u[1] - self.Na - 1)) / (self.Na - 1) * 0.1 * self.dt  # 最大加速度为±5
+            # agent.state.p_pos[0] += agent.state.p_vel * math.cos(agent.state.move_angle *
+            #                                                      (math.pi / 180)) * self.dt
+            # agent.state.p_pos[1] += agent.state.p_vel * math.sin(agent.state.move_angle *
+            #                                                      (math.pi / 180)) * self.dt
+            # 更改运动模式，action[0]和action[1]作为x，y轴加速度，而move——angle和p——vel对应x，y轴速度
+            agent.state.p_pos[0] += agent.state.move_angle * self.dt
+            agent.state.p_pos[1] += agent.state.p_vel * self.dt
             j = 0
             # set communication state (directly for now)
             # 如果在通信范围内，则可以获得其他所有agent的通信动作(也就是通信信息)

@@ -20,7 +20,7 @@ class Actor(nn.Module):
         super(Actor, self).__init__()
         self.max_action = args.high_action
         self.min_action = args.low_action
-        self.actor_id = self.agent_id
+        self.actor_id = agent_id
         self.fc1 = nn.Linear(args.obs_shape[agent_id], 64)  # 18*64
         self.fc2 = nn.Linear(64, 64)            # Fully connected
         self.fc3 = nn.Linear(64, 64)
@@ -84,7 +84,7 @@ class Q_net(nn.Module):
     def __init__(self, args):
         super(Q_net, self).__init__()
         self.max_action = args.high_action
-        self.fc1 = nn.Linear(sum(args.obs_shape) + sum(args.action_shape), 64)  # 输入维度是观测维度和动作维度的和
+        self.fc1 = nn.Linear(sum(args.obs_shape) + sum(args.action_shape), 64)  # 输入维度是观测维度和动作维度的和,也就是联合动作和联合状态
         # 也就是说输入是两者的拼接
         # Q 网络的输出可以是所有agent的动作空间维度之和，以及加上全局状态，作为一个centralized critic
         self.fc2 = nn.Linear(64, 64)
