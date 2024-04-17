@@ -159,7 +159,7 @@ class Scenario(BaseScenario):
         bound_reward = 0
         judge_rew = 3  # 奖励，用来控制边界
         #   边界奖励权重，越高则边界惩罚越大
-        bound_reward_weight = 0.01
+        bound_reward_weight = 0.1
         # 如果观察到对象，返回距离奖励，否则为0
         # if agent.obs_flag:
         #     dis_map = world.distance_cal_target()
@@ -247,7 +247,7 @@ class Scenario(BaseScenario):
         if bound_reward < 0:
             print("out of boundary, agent:", agent_index, 'value', bound_reward)
 
-        return dis_reward
+        return dis_reward + bound_reward
 
     # 以下是对手的奖励，这里也没用
     # def adversary_reward(self, agent, world):

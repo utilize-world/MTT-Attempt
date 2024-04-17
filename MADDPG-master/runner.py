@@ -25,8 +25,8 @@ class Runner:
         self.buffer = Buffer(args)
         self.save_path = self.args.save_dir + '/' + self.args.scenario_name + '/' + self.algorithm
         ## 规定存放csv的路径位置以及存放fig的位置
-        self.csv_save_dir = self.args.csv_save_dir + '/' + self.args.scenario_name+ '/' + self.algorithm
-        self.fig_save_dir = self.args.fig_save_dir + '/' + self.args.scenario_name+ '/' + self.algorithm
+        self.csv_save_dir = self.args.csv_save_dir + '/' + self.args.scenario_name + '/' + self.algorithm
+        self.fig_save_dir = self.args.fig_save_dir + '/' + self.args.scenario_name + '/' + self.algorithm
 
         if not os.path.exists(self.save_path):
             os.makedirs(self.save_path)

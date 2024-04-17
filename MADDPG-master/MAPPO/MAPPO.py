@@ -1,11 +1,11 @@
 import torch
 import os
-from .actor_critic import Actor, Q_net
+from .actor_critic import Actor, Critic
 import einops
 import torch.nn.functional as F
 
 
-class MASAC:
+class MAPPO():
     def __init__(self, args):
         self.args = args
         self.train_step = 0
@@ -14,30 +14,72 @@ class MASAC:
         # 创建单个policy_net,这里的0，就是代表第0个agent的actor，由于单个actor，
         # 在homogeneous情况下随机一个都行
         self.q_lr = 1e-3
-
-        self.qf1 = Q_net(args).to(self.device)
-        self.qf2 = Q_net(args).to(self.device)
-
-        self.qf1_t = Q_net(args)
-        self.qf2_t = Q_net(args)
-
-        self.qf1_t.load_state_dict(self.qf1.state_dict())
-        self.qf2_t.load_state_dict(self.qf2.state_dict())
-        self.q_optimizer = torch.optim.Adam(list(self.qf1.parameters()) + list(self.qf2.parameters()), lr=self.q_lr)
-
         self.p_lr = 3e-4
+        self.critic = Critic(args).to(self.device)
         self.actor = Actor(args, 0).to(self.device)
+
+        #    以下是超参，还未加入arguments中
+        self.clip_param = args.clip_param
+        self.ppo_epoch = args.ppo_epoch
+        self.num_mini_batch = args.num_mini_batch
+        self.data_chunk_length = args.data_chunk_length
+        self.value_loss_coef = args.value_loss_coef
+        self.entropy_coef = args.entropy_coef
+        self.max_grad_norm = args.max_grad_norm
+        self.huber_delta = args.huber_delta
+        ############################################
         # self.actor_t = Actor(args, agent_id)
-        self.alpha = args.alpha
         # self.actor_t.load_state_dict(self.actor.state_dict())
+        # self.qf1_t.load_state_dict(self.qf1.state_dict())
+        # self.qf2_t.load_state_dict(self.qf2.state_dict())
+        self.q_optimizer = torch.optim.Adam((self.critic.parameters()), lr=self.q_lr)
         self.actor_optimizer = torch.optim.Adam(list(self.actor.parameters()), lr=self.p_lr)
-        if args.autotune:  # 如果有自动更新alpha参数的步骤
-            target_entropy = -torch.prod(torch.Tensor(args.action_shape.shape).to(self.device)).item()
-            log_alpha = torch.zeros(1, requires_grad=True, device=self.device)
-            self.alpha = log_alpha.exp().item()
-            a_optimizer = torch.optim.Adam([log_alpha], lr=args.q_lr)
+
 
     # 先留着用来加载和存放model参数
+    def cal_value_loss(self, values, value_preds_batch, return_batch, active_masks_batch):
+        """
+        Calculate value function loss.
+        :param values: (torch.Tensor) value function predictions.
+        :param value_preds_batch: (torch.Tensor) "old" value  predictions from data batch (used for value clip loss)
+        :param return_batch: (torch.Tensor) reward to go returns.
+        :param active_masks_batch: (torch.Tensor) denotes if agent is active or dead at a given timesep.
+
+        :return value_loss: (torch.Tensor) value function loss.
+        """
+        value_pred_clipped = value_preds_batch + (values - value_preds_batch).clamp(-self.clip_param,
+                                                                                        self.clip_param)
+        error_clipped = return_batch - value_pred_clipped
+        error_original = return_batch - values
+        value_loss_original = (error_original**2)/2 # MSE
+        value_loss = value_loss_original
+        value_loss = value_loss.mean()
+        # if self._use_popart or self._use_valuenorm:
+        #     self.value_normalizer.update(return_batch)
+        #     error_clipped = self.value_normalizer.normalize(return_batch) - value_pred_clipped
+        #     error_original = self.value_normalizer.normalize(return_batch) - values
+        # else:
+        #     error_clipped = return_batch - value_pred_clipped
+        #     error_original = return_batch - values
+
+        # if self._use_huber_loss:
+        #     value_loss_clipped = huber_loss(error_clipped, self.huber_delta)
+        #     value_loss_original = huber_loss(error_original, self.huber_delta)
+        # else:
+        #     value_loss_clipped = mse_loss(error_clipped)
+        #     value_loss_original = mse_loss(error_original)
+        #
+        # if self._use_clipped_value_loss:
+        #     value_loss = torch.max(value_loss_original, value_loss_clipped)
+        # else:
+        #     value_loss = value_loss_original
+        #
+        # if self._use_value_active_masks:
+        #     value_loss = (value_loss * active_masks_batch).sum() / active_masks_batch.sum()
+        # else:
+        #     value_loss = value_loss.mean()
+
+        return value_loss
 
     def save_model(self, train_step, agent_id):
         num = str(train_step // self.args.save_rate)
@@ -50,7 +92,6 @@ class MASAC:
         torch.save(self.policy.state_dict(), model_path + '/' + 'MASAC' + '/' + num + 'MASAC_actor_params.pkl')
         torch.save(self.qf1.state_dict(), model_path + '/' + 'MASAC' + '/' + num + 'MASAC_critic_q1_params.pkl')
         torch.save(self.qf2.state_dict(), model_path + '/' + 'MASAC' + '/' + num + 'MASAC_critic_q2_params.pkl')
-
 
     def load_model(self):
         pass
@@ -79,11 +120,11 @@ class MASAC:
         next_state_log = []
         with torch.no_grad():
 
-            #u_next, next_state_log_pi = self.policy.get_actions(o_next)#报错，格式不对
+            # u_next, next_state_log_pi = self.policy.get_actions(o_next)#报错，格式不对
             for i in range(self.args.n_agents):
                 u_next_i, next_state_log_i, _ = self.policy.get_actions(o_next[i])
                 u_next.append(u_next_i)
-                next_state_log.append(next_state_log_i) #
+                next_state_log.append(next_state_log_i)  #
             # next_state_log : 2 * tensor(256,1)
             # u_next: agent_number * batch_size * action shape.  e.g. 2* tensor(256, 2)
             # q_next: agent_number * batch * 1          e.g. 2 * tensor(256, 1)
@@ -104,7 +145,7 @@ class MASAC:
             qf1_a_values = self.qf1(o, u).view(-1)
             qf2_a_values = self.qf2(o, u).view(-1)
             min_qf_next_target = (torch.min(q1_next_target,
-                                           q2_next_target) - self.alpha * next_state_log_pi) # 相当于往Q里加了log
+                                            q2_next_target) - self.alpha * next_state_log_pi)  # 相当于往Q里加了log
             next_q_value = r.unsqueeze(1) + self.args.gamma * (min_qf_next_target).view(-1)
             # 这里应该有一个（1-done）在gamma后才对
             qf1_loss = F.mse_loss(qf1_a_values, next_q_value)
@@ -127,8 +168,8 @@ class MASAC:
                     u_pi.append(u_pi_i)
                     state_log_pi.append(state_log_pi_i)
                 log_pi = einops.reduce(
-                state_log_pi, "c b a -> b a", "sum"
-            )
+                    state_log_pi, "c b a -> b a", "sum"
+                )
                 qf1_pi = self.qf1(o, u_pi)
                 qf2_pi = self.qf2(o, u_pi)
                 min_qf_pi = torch.min(qf1_pi, qf2_pi)
@@ -141,4 +182,3 @@ class MASAC:
                 if self.train_step > 0 and self.train_step % self.args.save_rate == 0:
                     self.save_model(self.train_step, agent_id)
                 self.train_step += 1
-

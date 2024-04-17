@@ -58,9 +58,12 @@ class Actor(nn.Module):
     def forward(self, x):
         x = F.relu(self.fc1(x))     # 一层层连接，一共三层
         x = F.relu(self.fc2(x))
+
         log_std = self.fc_logstd(x)
+        # log_std: tensor(256,2)
         log_std = torch.tanh(log_std)
         mean = self.fc_mean(x)
+        # mean: tensor(256,2)
         log_std = LOG_STD_MIN + 0.5 * (LOG_STD_MAX - LOG_STD_MIN) * (log_std + 1)  # From SpinUp / Denis Yarats
 
         return mean, log_std
@@ -70,6 +73,7 @@ class Actor(nn.Module):
         std = log_std.exp()
         normal = torch.distributions.Normal(mean, std)  #   Normal distribution
         x_t = normal.rsample()  # for reparameterization trick (mean + std * N(0,1)) 先对标准正态采样，再重新加上
+        # x_t, y_t : tensor(256, 2)
         y_t = torch.tanh(x_t)
         action = y_t * self.action_scale + self.action_bias  # 实际上就是把action规范到min——max区间中
         log_prob = normal.log_prob(x_t) # x值对应的对数概率，因为normal代表了一个正态分布的概率密度函数
