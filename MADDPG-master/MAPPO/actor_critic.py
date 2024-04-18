@@ -13,11 +13,45 @@ class Actor(AC):
         super().__init__(args, agent_id)
 
     def forward(self, x):
-        AC.forward(self, x)
+        return AC.forward(self, x)
 
     def get_actions(self, x):
-        AC.get_actions(self, x)
+        mean, log_std = self(x)
+        std = log_std.exp()
+        normal = torch.distributions.Normal(mean, std)  # Normal distribution
+        x_t = normal.rsample()  # for reparameterization trick (mean + std * N(0,1)) 先对标准正态采样，再重新加上
+        # x_t, y_t : tensor(256, 2)
+        y_t = torch.tanh(x_t)
+        action = y_t * self.action_scale + self.action_bias  # 实际上就是把action规范到min——max区间中
+        log_prob = normal.log_prob(x_t)  # x值对应的对数概率，因为normal代表了一个正态分布的概率密度函数
+        # Enforcing Action Bound ??
+        log_prob -= torch.log(self.action_scale * (1 - y_t.pow(2)) + 1e-6)
+        log_prob = log_prob.sum(1, keepdim=True)
+        mean = torch.tanh(mean) * self.action_scale + self.action_bias
+        entropy = normal.entropy().mean()   # may mistake
+        return action, log_prob, mean, entropy
 
+
+    # def evaluate_action(self, observation, action):
+    #     """
+    #     :param action: (torch.tensor) actions whose entropy and log probability to evaluate.
+    #     dist_entropy: (torch.Tensor) action distribution entropy for the given inputs.
+    #     action_log_probs: (torch.Tensor) log probabilities of the input actions.
+    #
+    #
+    #     """
+    #     action_log_probs = []
+    #     dist_entropy = []
+    #     actor_features = self.get_actions(observation)
+    #
+    #     # available_actions = ?
+    #     # action_log_probs, dist_entropy = self.act.evaluate_actions(actor_features,
+    #     #                                                            action, available_actions=None,
+    #     #                                                            active_masks=
+    #     #                                                            active_masks if self._use_policy_active_masks
+    #     #                                                            else None)
+    #
+    #     return action_log_probs, dist_entropy
 
 
 class Critic(nn.Module):

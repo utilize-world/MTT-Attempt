@@ -315,12 +315,12 @@ class Scenario(BaseScenario):
     #     """
     def done_judge(self, world):
         agents = self.get_agent(world)
-        flag = True
+        flag = 1
         for agent in agents:
             if agent.obs_flag:
                 continue
             else:
-                flag = False
+                flag = 0
                 break
         if flag:
             print("all obs")
