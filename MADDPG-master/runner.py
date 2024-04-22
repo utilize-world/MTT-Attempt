@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 from common.utils import check_agent_bound
 from maddpg.maddpg import MADDPG
 from MASAC.MASAC import MASAC
+from MAPPO.MAPPO import MAPPO
 
 class Runner:
     """
@@ -42,8 +43,13 @@ class Runner:
                 policy = MADDPG(self.args, i)
                 agent = Agent(i, self.args, policy, algorithms)
                 agents.append(agent)
-        elif algorithms == "MASAC":
+        elif algorithms == "MASAC" :
             policy = MASAC(self.args)   # 采用共享参数的方式
+            for i in range(self.args.n_agents):
+                agent = Agent(i, self.args, policy, algorithms)
+                agents.append(agent)
+        elif algorithms == "MAPPO":
+            policy = MAPPO(self.args)  # 采用共享参数的方式
             for i in range(self.args.n_agents):
                 agent = Agent(i, self.args, policy, algorithms)
                 agents.append(agent)
@@ -56,13 +62,38 @@ class Runner:
         done = False
         rewards_list = []
         rewards_epi = []
+        device = torch.device("cuda" if torch.cuda.is_available() and self.args.cuda else "cpu")
+        u_joint = np.zeros((len(self.agents), self.args.max_episode_len))
+        obs_joint = np.zeros((len(self.agents), self.args.max_episode_len))
+        next_obs = np.zeros((len(self.agents), self.args.max_episode_len))
+        logprobs = torch.zeros((len(self.agents), self.args.max_episode_len)).to(device)
+        # rewards is shared
+        rewards_mappo_timestep = torch.zeros((len(self.agents), self.args.max_episode_len)).to(device)
+        dones = torch.zeros((len(self.agents), self.args.max_episode_len)).to(device)
+        nextdone = torch.zeros((len(self.agents), self.args.max_episode_len)).to(device)
+        value = torch.zeros((len(self.agents), self.args.max_episode_len)).to(device)
+
         s = self.env.reset()
+        current_time_step = 0
         for time_step in tqdm(range(self.args.time_steps)):
             # reset the environment
+            #
 
-            if time_step % self.episode_limit == 0 or not (False in done):
+
+            if current_time_step % self.episode_limit == 0 or not (False in done):
                 s = self.env.reset()
                 rewards_list.append(rewards)
+
+                u_joint.fill(0)
+                obs_joint.fill(0)
+                logprobs.fill(0)
+                value.fill(0)
+                rewards_mappo_timestep.fill(0)
+                next_obs.fill(0)
+                dones.fill(0)
+                nextdone.fill(0)
+
+                current_time_step = 0
 
                 rewards_list = rewards_list[-2000:]   # 取最后2000个训练episode
                 rewards = 0
@@ -70,7 +101,15 @@ class Runner:
             actions = []
             with torch.no_grad():
                 for agent_id, agent in enumerate(self.agents):
-                    action = agent.select_action(s[agent_id], self.noise, self.epsilon)
+                    if self.algorithm == "MAPPO":
+                        action, pi2, probs, values = agent.select_action(s[agent_id], self.noise, self.epsilon)
+                        u_joint[agent_id].append(pi2)
+                        logprobs[agent_id].append(probs)
+                        value[agent_id].append(values)
+                        obs_joint[agent_id].append(s[agent_id])
+
+                    else:
+                        action = agent.select_action(s[agent_id], self.noise, self.epsilon)
                     u.append(action)
                     actions.append(action)
             # 以下一步其实是补全维度，但是在MTT中没有这样一个需要，因为控制的只有agent而没有target
@@ -90,15 +129,31 @@ class Runner:
             train_returns.append(rewards)                      # 这里的train——returns是取每个时间步的reward
             train_returns_clip = train_returns[-800:]   # 取最后1000个时间步
 
+            for agent in range(len(self.agents)):
+                dones[agent].append(done)
+                nextdone[agent] = dones[agent]
+                next_obs[agent] = s_next[agent]
+                rewards_mappo_timestep[agent] = r[agent]
 
-            self.buffer.store_episode(s[:self.args.n_agents], u, r[:self.args.n_agents], s_next[:self.args.n_agents])
-            s = s_next
-            if self.buffer.current_size >= self.args.batch_size:
-                transitions = self.buffer.sample(self.args.batch_size)
+
+            if self.algorithm == "MADDPG" or "MASAC":
+                self.buffer.store_episode(s[:self.args.n_agents], u, r[:self.args.n_agents], s_next[:self.args.n_agents])
+                s = s_next
+                if self.buffer.current_size >= self.args.batch_size:
+                    transitions = self.buffer.sample(self.args.batch_size)
+                    for agent in self.agents:
+                        other_agents = self.agents.copy()
+                        other_agents.remove(agent)
+                        agent.learn(transitions, other_agents, self.algorithm)
+            elif self.algorithm == "MAPPO" and current_time_step % self.episode_limit == 0 and time_step > self.args.max_episode_len * self.args.update_epi\
+                    or not (False in done):
+
                 for agent in self.agents:
-                    other_agents = self.agents.copy()
-                    other_agents.remove(agent)
-                    agent.learn(transitions, other_agents, self.algorithm)
+                    agent.learn(obs=obs_joint[agent], next_obs=next_obs[agent], values=value[agent],
+                                dones=dones[agent], actions=u_joint[agent], logprobs=logprobs[agent],
+                                rewards=rewards_mappo_timestep[agent], nextdone=nextdone[agent], time_steps=current_time_step)
+            current_time_step += 1
+
             if time_step > 0 and time_step % self.args.evaluate_rate == 0:
                 returns.append(self.evaluate())
 

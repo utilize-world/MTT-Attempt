@@ -3,7 +3,7 @@ import os
 from .actor_critic import Actor, Critic
 import einops
 import torch.nn.functional as F
-
+import numpy as np
 
 class MAPPO:
     def __init__(self, args):
@@ -101,13 +101,17 @@ class MAPPO:
     #         target_param.data.copy_((1 - self.args.tau) * target_param.data + self.args.tau * param.data)
     #
     #
-    def train(self, obs, next_obs, dones, actions, rewards, agent_id, time_step):
+    def train(self, obs, next_obs, values, dones, actions, logprobs, rewards, nextdone, agent_id, time_steps):
         """
         PPO训练较为特殊
-        transition仍表示为用于训练的数据，但是这里是一个episode中的所有数据
+        从obs到rewards仍表示为用于训练的数据，但是这里是一个episode中的所有数据
         每个episode更新一次
+        b_inds, agent_id, time_steps
+        分别是
         """
         rewards = torch.tensor(rewards).to(self.device)
+        next_obs, next_done = torch.Tensor(next_obs).to(self.device), torch.Tensor(nextdone).to(self.device)
+
         with torch.no_grad():
             next_value = self.critic(next_obs).reshape(1, -1)
             advantages = torch.zeros_like(rewards).to(self.device)
@@ -119,24 +123,78 @@ class MAPPO:
                 else:
                     nextnonterminal = 1.0 - dones[t + 1]
                     nextvalues = values[t + 1]
-                delta = rewards[t] + args.gamma * nextvalues * nextnonterminal - values[t]
-                advantages[t] = lastgaelam = delta + args.gamma * args.gae_lambda * nextnonterminal * lastgaelam
+                delta = rewards[t] + self.args.gamma * nextvalues * nextnonterminal - values[t]
+                advantages[t] = lastgaelam = delta + self.args.gamma * self.args.gae_lambda * nextnonterminal * lastgaelam
             returns = advantages + values
-            next_state_log_pi = einops.reduce(
-                next_state_log, "c b a -> b a", "sum"
-            )
-            # 这里相当于把每个agent的log概率加起来，结构应该是这样的
-            #
-            #                  表示的只是数据的数组形式，并不是一种数据结构
-            #   agent\ batch内的sample，logΠ      1       2       3                            1
-            #           1                                                          1      prob_sum1
-            #           2                                                   ---->  2      prob_sum2
-            #           3                                                          3      prob_sum3
-            # SAC bellman equation,注意这里的输入是observation的concatenate, 而没有加入global information,这点之后再考虑
 
+        # flatten
+        # b_obs = obs.reshape((-1,) + envs.single_observation_space.shape)
+        b_obs = obs.reshape((-1,) + self.args.obs_shape[agent_id].shape)
+        b_logprobs = logprobs.reshape(-1)
+        b_actions = actions.reshape((-1,) + self.args.action_shape[agent_id].shape)
+        b_advantages = advantages.reshape(-1)
+        b_returns = returns.reshape(-1)
+        b_values = values.reshape(-1)
+        b_inds = np.arange(time_steps)
+        clipfracs = []
+        #np.random.shuffle(b_inds)
+        for epoch in range(self.args.update_epi):
+            np.random.shuffle(b_inds)
+            min_size = time_steps/10
+            for start in range(0, time_steps, min_size):
+                end = start + min_size
+                mb_inds = b_inds[start:end]
 
-            self.q_optimizer.zero_grad()
-            qf_loss.backward()
-            self.q_optimizer.step()
+                #_, newlogprob, entropy, newvalue = agent.get_action_and_value(obs[mb_inds], actions.long()[mb_inds])
+                _, newlogprob, entropy = self.actor.get_actions(b_obs[mb_inds], b_actions.long()[mb_inds])
+                newvalue = self.critic()
+                logratio = newlogprob - b_logprobs[mb_inds]
+                ratio = logratio.exp()
+
+                with torch.no_grad():
+                    # calculate approx_kl http://joschu.net/blog/kl-approx.html
+                    old_approx_kl = (-logratio).mean()
+                    approx_kl = ((ratio - 1) - logratio).mean()
+                    clipfracs += [((ratio - 1.0).abs() > self.args.clip_coef).float().mean().item()]
+
+                mb_advantages = b_advantages[mb_inds]
+                if True:    # use normalized adv func
+                    mb_advantages = (mb_advantages - mb_advantages.mean()) / (mb_advantages.std() + 1e-8)
+
+                # Policy loss
+                pg_loss1 = -mb_advantages * ratio
+                pg_loss2 = -mb_advantages * torch.clamp(ratio, 1 - self.args.clip_coef, 1 + self.args.clip_coef)
+                pg_loss = torch.max(pg_loss1, pg_loss2).mean()
+
+                # Value loss
+                newvalue = newvalue.view(-1)
+                if True: # toggles whether or not to use a clipped loss for the value function, as per the paper
+                    v_loss_unclipped = (newvalue - b_returns[mb_inds]) ** 2
+                    v_clipped = b_values[mb_inds] + torch.clamp(
+                        newvalue - b_values[mb_inds],
+                        -self.args.clip_coef,
+                        self.args.clip_coef,
+                    )
+                    v_loss_clipped = (v_clipped - b_returns[mb_inds]) ** 2
+                    v_loss_max = torch.max(v_loss_unclipped, v_loss_clipped)
+                    v_loss = 0.5 * v_loss_max.mean()
+                else:
+                    v_loss = 0.5 * ((newvalue - b_returns[mb_inds]) ** 2).mean()
+
+                entropy_loss = entropy.mean()
+                loss = pg_loss - self.args.ent_coef * entropy_loss + v_loss * self.args.vf_coef
+
+                optimizer.zero_grad()
+                loss.backward()
+                nn.utils.clip_grad_norm_(agent.parameters(), args.max_grad_norm)
+                optimizer.step()
+
+            if self.args.target_kl is not None and approx_kl > self.args.target_kl:
+                break
+
+        # y_pred, y_true = b_values.cpu().numpy(), b_returns.cpu().numpy()
+        # var_y = np.var(y_true)
+        # explained_var = np.nan if var_y == 0 else 1 - np.var(y_true - y_pred) / var_y
+
 
 

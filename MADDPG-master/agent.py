@@ -27,24 +27,36 @@ class Agent:
             # np.clip(a, a_min, a_max, out=None) 限制其值在amin，amax之间
             u += np.int((self.args.high_action-self.args.low_action)/2)     # 要限制其动作在0到high_action内
 
-        elif self.algorithm == "MASAC":
+        elif self.algorithm == "MASAC" or self.algorithm == "MAPPO":
             inputs = torch.tensor(o, dtype=torch.float32).unsqueeze(0)
-            pi = self.policy.policy.get_actions(inputs)[0].squeeze(0)
+            pi2, prob, _ = self.policy.policy.get_actions(inputs)
+            pi = pi2
+            pi = pi.squeeze(0)
             u = pi.cpu().numpy()
             u = np.clip(u, np.int(-(self.args.high_action - self.args.low_action) / 2),
                         np.int((self.args.high_action - self.args.low_action) / 2))
             # np.clip(a, a_min, a_max, out=None) 限制其值在amin，amax之间
             u += np.int((self.args.high_action - self.args.low_action) / 2)
-
+            if self.algorithm == "MAPPO":
+                values = self.policy.critic(inputs)
+                return u.copy(), pi2, prob, values
         else:
             print("error arguments input")
             return None
         return u.copy()
 
-    def learn(self, transitions, other_agents, algorithm):
+    def learn(self, transitions, other_agents, algorithm,
+              obs=None,
+              next_obs=None,
+              values=None, dones=None,
+              actions=None, logprobs=None,
+
+              rewards=None, nextdone=None, time_steps=None):
         if algorithm == "MADDPG":
             self.policy.train(transitions, other_agents)
         elif algorithm == "MASAC":
             self.policy.train(transitions, self.agent_id)
+        elif algorithm == "MAPPO":
+            self.policy.train(obs, next_obs, values, dones, actions, logprobs, rewards, nextdone, self.agent_id, time_steps)
         else:
             print("error arguments input")

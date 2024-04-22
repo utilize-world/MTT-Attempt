@@ -247,7 +247,7 @@ class Scenario(BaseScenario):
         if bound_reward < 0:
             print("out of boundary, agent:", agent_index, 'value', bound_reward)
 
-        return dis_reward + bound_reward
+        return dis_reward
 
     # 以下是对手的奖励，这里也没用
     # def adversary_reward(self, agent, world):

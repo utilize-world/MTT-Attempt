@@ -10,10 +10,11 @@ def get_args():
     parser = argparse.ArgumentParser("Reinforcement Learning experiments for multiagent environments")
     # Training
     parser.add_argument("--training-times", type=int, default=20, help="numbers of Training")
+    parser.add_argument("cuda", type=bool, default=True, help="cuda enable")
     # Environment
     parser.add_argument("--scenario-name", type=str, default="MTT", help="name of the scenario script")
     parser.add_argument("--max-episode-len", type=int, default=200, help="maximum episode length")
-    parser.add_argument("--time-steps", type=int, default=200000, help="number of time steps")
+    parser.add_argument("--time-steps", type=int, default=100000, help="number of time steps")
     # 一个地图最多env.n个agents，用户可以定义min(env.n,num-adversaries)个敌人，剩下的是好的agent
     parser.add_argument("--num-adversaries", type=int, default=0, help="number of adversaries")
     # Core training parameters
@@ -31,6 +32,14 @@ def get_args():
     parser.add_argument("--update-interval", type=int, default=1, help="regulate the update of policy network")
     # PPO relevant paras
     parser.add_argument("--centralized-input", type=bool, default=True, help="if true, the MAPPO will use centralized critic")
+    parser.add_argument("--gea_lambda", type=float, default=0.95,
+                        help="gae factor")
+    parser.add_argument("--update-epi", type=int, default=5, help="update times each ")
+    parser.add_argument("--clip-coef", type=float, default=0.2, help="clip para")
+    parser.add_argument("--ent-coef", type=float, default=0.01, help="coefficient of the entropy")
+    parser.add_argument("--vf-coef", type=float, default=0.5, help="coefficient of the value function")
+    parser.add_argument("--target-kl", type=float, default=None, help="the target KL divergence threshold")
+
     # Checkpointing
     parser.add_argument("--save-dir", type=str, default="./model", help="directory in which training state and model should be saved")
     parser.add_argument("--save-rate", type=int, default=2000, help="save model once every time this many episodes are completed")

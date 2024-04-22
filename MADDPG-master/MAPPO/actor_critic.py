@@ -8,28 +8,42 @@ from ..MASAC.MASAC import Actor as AC
 # MAPPO 的 critic 网络是 以 联合观察作为输入， 输出单个Q值
 # 而 actor 网络是 输入单个的观察维度，输出动作和对数概率, 这里直接继承SAC网络的actor
 # define the actor network
-class Actor(AC):
+class Actor(nn.Module):
     def __init__(self, args, agent_id):
-        super().__init__(args, agent_id)
-
+        super(Actor, self).__init__()
+        self.max_action = args.high_action
+        self.min_action = args.low_action
+        self.fc1 = nn.Linear(args.obs_shape[agent_id], 64)  # 18*64
+        self.fc2 = nn.Linear(64, 64)  # Fully connected
+        self.fc3 = nn.Linear(64, 64)
+        self.action_out = nn.Linear(64, args.action_shape[agent_id])
     def forward(self, x):
-        return AC.forward(self, x)
-
-    def get_actions(self, x):
-        mean, log_std = self(x)
-        std = log_std.exp()
-        normal = torch.distributions.Normal(mean, std)  # Normal distribution
-        x_t = normal.rsample()  # for reparameterization trick (mean + std * N(0,1)) 先对标准正态采样，再重新加上
-        # x_t, y_t : tensor(256, 2)
-        y_t = torch.tanh(x_t)
-        action = y_t * self.action_scale + self.action_bias  # 实际上就是把action规范到min——max区间中
-        log_prob = normal.log_prob(x_t)  # x值对应的对数概率，因为normal代表了一个正态分布的概率密度函数
-        # Enforcing Action Bound ??
-        log_prob -= torch.log(self.action_scale * (1 - y_t.pow(2)) + 1e-6)
-        log_prob = log_prob.sum(1, keepdim=True)
-        mean = torch.tanh(mean) * self.action_scale + self.action_bias
-        entropy = normal.entropy().mean()   # may mistake
-        return action, log_prob, mean, entropy
+        x = F.relu(self.fc1(x))  # 一层层连接，一共三层
+        x = F.relu(self.fc2(x))
+        x = F.relu(self.fc3(x))
+        actions = np.int((self.max_action - self.min_action) / 2) * torch.tanh(self.action_out(x))
+        return actions
+    def get_actions(self, x, actions=None):
+            # mean, log_std = self(x)
+            # std = log_std.exp()
+            # normal = torch.distributions.Normal(mean, std)  # Normal distribution
+            # x_t = normal.rsample()  # for reparameterization trick (mean + std * N(0,1)) 先对标准正态采样，再重新加上
+            # # x_t, y_t : tensor(256, 2)
+            # y_t = torch.tanh(x_t)
+            # action = y_t * self.action_scale + self.action_bias  # 实际上就是把action规范到min——max区间中
+            # log_prob = normal.log_prob(x_t)  # x值对应的对数概率，因为normal代表了一个正态分布的概率密度函数
+            # # Enforcing Action Bound ??
+            # log_prob -= torch.log(self.action_scale * (1 - y_t.pow(2)) + 1e-6)
+            # log_prob = log_prob.sum(1, keepdim=True)
+            # mean = torch.tanh(mean) * self.action_scale + self.action_bias
+            # entropy = normal.entropy().mean()   # may mistake
+            logits =self(x)
+            probs = torch.distributions.Categorical(logits=logits)
+            if actions is None:
+                actions = probs.sample()
+            log_prob = probs.log_prob(actions)
+            entropy = probs.entropy()
+            return actions, log_prob, entropy
 
 
     # def evaluate_action(self, observation, action):
