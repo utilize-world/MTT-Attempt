@@ -12,7 +12,7 @@ class Agent:
         self.policy = policy
         self.algorithm = algorithm
 
-    def select_action(self, o, noise_rate, epsilon):
+    def select_action(self, o, noise_rate, epsilon, global_info=None):
         if np.random.uniform() < epsilon:
             u = np.random.uniform(self.args.low_action, self.args.high_action, self.args.action_shape[self.agent_id])
         elif self.algorithm == "MADDPG":
@@ -38,7 +38,10 @@ class Agent:
             # np.clip(a, a_min, a_max, out=None) 限制其值在amin，amax之间
             u += np.int((self.args.high_action - self.args.low_action) / 2)
             if self.algorithm == "MAPPO":
-                values = self.policy.critic(inputs)
+                # inputs = torch.cat([inputs, global_info], dim=1)
+                # global_info = torch.tensor(global_info).unsqueeze(0)
+                global_info = [torch.tensor(row, dtype=torch.float32).unsqueeze(0) for row in global_info]
+                values = self.policy.critic(global_info)
                 return u.copy(), pi2, prob, values
         else:
             print("error arguments input")

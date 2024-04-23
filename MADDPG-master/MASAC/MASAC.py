@@ -69,6 +69,7 @@ class MASAC:
         o, u, o_next = [], [], []  # 用来装每个agent经验中的各项
         r = transitions['r_%d' % agent_id]  # 训练时只需要自己的reward
         # r: tensor(256, )
+        # o,u,onext : list:2, tensor(256,19), tensor(256,19), for u, list2, tensor(256, 2) tensor(256, 2)
         for agent_id in range(self.args.n_agents):
             o.append(transitions['o_%d' % agent_id])  # 大小是agent_number*batch*observation_shape
             u.append(transitions['u_%d' % agent_id])
@@ -82,8 +83,9 @@ class MASAC:
             #u_next, next_state_log_pi = self.policy.get_actions(o_next)#报错，格式不对
             for i in range(self.args.n_agents):
                 u_next_i, next_state_log_i, _ = self.policy.get_actions(o_next[i])
-                u_next.append(u_next_i)
-                next_state_log.append(next_state_log_i) #
+                # 256*2, 256*1
+                u_next.append(u_next_i) # list2, tensor 256*2
+                next_state_log.append(next_state_log_i) # list2,tensor 256*1
             # next_state_log : 2 * tensor(256,1)
             # u_next: agent_number * batch_size * action shape.  e.g. 2* tensor(256, 2)
             # q_next: agent_number * batch * 1          e.g. 2 * tensor(256, 1)
@@ -103,16 +105,17 @@ class MASAC:
 
             qf1_a_values = self.qf1(o, u).view(-1)
             qf2_a_values = self.qf2(o, u).view(-1)
+            # qf1_a_value tensor (256,)
             min_qf_next_target = (torch.min(q1_next_target,
                                            q2_next_target) - self.alpha * next_state_log_pi) # 相当于往Q里加了log
-            next_q_value = r.unsqueeze(1) + self.args.gamma * (min_qf_next_target).view(-1)
+            next_q_value = r.unsqueeze(1) + self.args.gamma * (min_qf_next_target)
             # 这里应该有一个（1-done）在gamma后才对
             qf1_loss = F.mse_loss(qf1_a_values, next_q_value)
             qf2_loss = F.mse_loss(qf2_a_values, next_q_value)
             qf1_loss = (next_q_value - qf1_a_values).pow(2).mean()
             qf2_loss = (next_q_value - qf2_a_values).pow(2).mean()
             qf_loss = (qf1_loss + qf2_loss).requires_grad_(True)
-
+            # qf_loss = (qf1_loss + qf2_loss)
             self.q_optimizer.zero_grad()
             qf_loss.backward()
             self.q_optimizer.step()

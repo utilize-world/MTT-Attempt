@@ -62,16 +62,17 @@ class Runner:
         done = False
         rewards_list = []
         rewards_epi = []
-        device = torch.device("cuda" if torch.cuda.is_available() and self.args.cuda else "cpu")
-        u_joint = np.zeros((len(self.agents), self.args.max_episode_len))
-        obs_joint = np.zeros((len(self.agents), self.args.max_episode_len))
-        next_obs = np.zeros((len(self.agents), self.args.max_episode_len))
-        logprobs = torch.zeros((len(self.agents), self.args.max_episode_len)).to(device)
-        # rewards is shared
-        rewards_mappo_timestep = torch.zeros((len(self.agents), self.args.max_episode_len)).to(device)
-        dones = torch.zeros((len(self.agents), self.args.max_episode_len)).to(device)
-        nextdone = torch.zeros((len(self.agents), self.args.max_episode_len)).to(device)
-        value = torch.zeros((len(self.agents), self.args.max_episode_len)).to(device)
+        if self.algorithm == "MAPPO":
+            device = torch.device("cuda" if torch.cuda.is_available() and self.args.cuda else "cpu")
+            u_joint = np.zeros((len(self.agents), self.args.max_episode_len, self.args.action_shape[0]))
+            obs_joint = np.zeros((len(self.agents), self.args.max_episode_len, sum(self.args.obs_shape)))
+            next_obs = np.zeros((len(self.agents), self.args.max_episode_len, sum(self.args.obs_shape)))
+            logprobs = torch.zeros((len(self.agents), self.args.max_episode_len)).to(device)
+            # rewards is shared
+            rewards_mappo_timestep = torch.zeros((len(self.agents), self.args.max_episode_len)).to(device)
+            dones = torch.zeros((len(self.agents), self.args.max_episode_len)).to(device)
+            nextdone = torch.zeros((len(self.agents), self.args.max_episode_len)).to(device)
+            value = torch.zeros((len(self.agents), self.args.max_episode_len)).to(device)
 
         s = self.env.reset()
         current_time_step = 0
@@ -83,15 +84,15 @@ class Runner:
             if current_time_step % self.episode_limit == 0 or not (False in done):
                 s = self.env.reset()
                 rewards_list.append(rewards)
-
-                u_joint.fill(0)
-                obs_joint.fill(0)
-                logprobs.fill(0)
-                value.fill(0)
-                rewards_mappo_timestep.fill(0)
-                next_obs.fill(0)
-                dones.fill(0)
-                nextdone.fill(0)
+                if self.algorithm == "MAPPO":
+                    u_joint.fill(0)
+                    obs_joint.fill(0)
+                    logprobs.zero_()
+                    value.zero_()
+                    rewards_mappo_timestep.zero_()
+                    next_obs.fill(0)
+                    dones.zero_()
+                    nextdone.zero_()
 
                 current_time_step = 0
 
@@ -102,11 +103,11 @@ class Runner:
             with torch.no_grad():
                 for agent_id, agent in enumerate(self.agents):
                     if self.algorithm == "MAPPO":
-                        action, pi2, probs, values = agent.select_action(s[agent_id], self.noise, self.epsilon)
-                        u_joint[agent_id].append(pi2)
-                        logprobs[agent_id].append(probs)
-                        value[agent_id].append(values)
-                        obs_joint[agent_id].append(s[agent_id])
+                        action, pi2, probs, values = agent.select_action(s[agent_id], self.noise, self.epsilon, s)
+                        u_joint[agent_id] = pi2
+                        logprobs[agent_id] = probs
+                        value[agent_id] = values
+                        obs_joint[agent_id] = s[agent_id]
 
                     else:
                         action = agent.select_action(s[agent_id], self.noise, self.epsilon)
@@ -128,12 +129,12 @@ class Runner:
             rewards += float(sum(r)) / float(len(self.agents))  # 这里的 reward是一个episode的reward
             train_returns.append(rewards)                      # 这里的train——returns是取每个时间步的reward
             train_returns_clip = train_returns[-800:]   # 取最后1000个时间步
-
-            for agent in range(len(self.agents)):
-                dones[agent].append(done)
-                nextdone[agent] = dones[agent]
-                next_obs[agent] = s_next[agent]
-                rewards_mappo_timestep[agent] = r[agent]
+            if self.algorithm == "MAPPO":
+                for agent in range(len(self.agents)):
+                    dones[agent].append(done)
+                    nextdone[agent] = dones[agent]
+                    next_obs[agent] = s_next[agent]
+                    rewards_mappo_timestep[agent] = r[agent]
 
 
             if self.algorithm == "MADDPG" or "MASAC":

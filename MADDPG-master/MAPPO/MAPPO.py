@@ -19,14 +19,14 @@ class MAPPO:
         self.actor = Actor(args, 0).to(self.device)
 
         #    以下是超参，还未加入arguments中
-        self.clip_param = args.clip_param
-        self.ppo_epoch = args.ppo_epoch
-        self.num_mini_batch = args.num_mini_batch
-        self.data_chunk_length = args.data_chunk_length
-        self.value_loss_coef = args.value_loss_coef
-        self.entropy_coef = args.entropy_coef
-        self.max_grad_norm = args.max_grad_norm
-        self.huber_delta = args.huber_delta
+        # self.clip_param = args.clip_param
+        # self.ppo_epoch = args.ppo_epoch
+        # self.num_mini_batch = args.num_mini_batch
+        # self.data_chunk_length = args.data_chunk_length
+        # self.value_loss_coef = args.value_loss_coef
+        # self.entropy_coef = args.entropy_coef
+        # self.max_grad_norm = args.max_grad_norm
+        # self.huber_delta = args.huber_delta
         ############################################
         # self.actor_t = Actor(args, agent_id)
         # self.actor_t.load_state_dict(self.actor.state_dict())
@@ -147,7 +147,7 @@ class MAPPO:
 
                 #_, newlogprob, entropy, newvalue = agent.get_action_and_value(obs[mb_inds], actions.long()[mb_inds])
                 _, newlogprob, entropy = self.actor.get_actions(b_obs[mb_inds], b_actions.long()[mb_inds])
-                newvalue = self.critic()
+                newvalue = self.critic(b_obs[mb_inds])
                 logratio = newlogprob - b_logprobs[mb_inds]
                 ratio = logratio.exp()
 

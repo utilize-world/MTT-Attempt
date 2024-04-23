@@ -10,7 +10,7 @@ def get_args():
     parser = argparse.ArgumentParser("Reinforcement Learning experiments for multiagent environments")
     # Training
     parser.add_argument("--training-times", type=int, default=20, help="numbers of Training")
-    parser.add_argument("cuda", type=bool, default=True, help="cuda enable")
+    parser.add_argument("--cuda", type=bool, default=True, help="cuda enable")
     # Environment
     parser.add_argument("--scenario-name", type=str, default="MTT", help="name of the scenario script")
     parser.add_argument("--max-episode-len", type=int, default=200, help="maximum episode length")
@@ -27,7 +27,7 @@ def get_args():
     parser.add_argument("--buffer-size", type=int, default=int(5e5), help="number of transitions can be stored in buffer")
     parser.add_argument("--batch-size", type=int, default=256, help="number of episodes to optimize at the same time")
     # SAC relevant factor
-    parser.add_argument("--alpha", type=float, default=0.2, help="Entropy regularization coefficient")
+    parser.add_argument("--alpha", type=float, default=0.05, help="Entropy regularization coefficient")
     parser.add_argument("--autotune", type=bool, default=False, help="automatic tuning of the entropy coefficient")
     parser.add_argument("--update-interval", type=int, default=1, help="regulate the update of policy network")
     # PPO relevant paras
