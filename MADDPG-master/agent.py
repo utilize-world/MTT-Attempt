@@ -13,7 +13,7 @@ class Agent:
         self.algorithm = algorithm
 
     def select_action(self, o, noise_rate, epsilon, global_info=None):
-        if np.random.uniform() < epsilon:
+        if np.random.uniform() < epsilon and self.algorithm == "MADDPG":
             u = np.random.uniform(self.args.low_action, self.args.high_action, self.args.action_shape[self.agent_id])
         elif self.algorithm == "MADDPG":
             inputs = torch.tensor(o, dtype=torch.float32).unsqueeze(0)  # 给第0位添加一维向量，本来o是(18,)，现在是tensor(1,observation shape)
@@ -40,8 +40,10 @@ class Agent:
             if self.algorithm == "MAPPO":
                 # inputs = torch.cat([inputs, global_info], dim=1)
                 # global_info = torch.tensor(global_info).unsqueeze(0)
+                if global_info==None:
+                    return u.copy()
                 global_info = [torch.tensor(row, dtype=torch.float32).unsqueeze(0) for row in global_info]
-                values = self.policy.critic(global_info)
+                values = self.policy.critic(torch.cat(global_info, dim=1))
                 return u.copy(), pi2, prob, values
         else:
             print("error arguments input")

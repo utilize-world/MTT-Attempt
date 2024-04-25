@@ -64,15 +64,17 @@ class Runner:
         rewards_epi = []
         if self.algorithm == "MAPPO":
             device = torch.device("cuda" if torch.cuda.is_available() and self.args.cuda else "cpu")
-            u_joint = np.zeros((len(self.agents), self.args.max_episode_len, self.args.action_shape[0]))
-            obs_joint = np.zeros((len(self.agents), self.args.max_episode_len, sum(self.args.obs_shape)))
-            next_obs = np.zeros((len(self.agents), self.args.max_episode_len, sum(self.args.obs_shape)))
-            logprobs = torch.zeros((len(self.agents), self.args.max_episode_len)).to(device)
+            u_joint = torch.zeros((len(self.agents), self.args.max_episode_len) + (1, self.args.action_shape[0])).to(device)
+            # 3 * 200 * (1 * 2)
+            obs_joint = torch.zeros((len(self.agents), self.args.max_episode_len) + ((1, self.args.obs_shape[0]))).to(device)
+            # 3* 200 * 1 *19
+            next_obs = torch.zeros((len(self.agents), self.args.max_episode_len) + ((1, self.args.obs_shape[0]))).to(device)
+            logprobs = torch.zeros((len(self.agents), self.args.max_episode_len, 1)).to(device)
             # rewards is shared
-            rewards_mappo_timestep = torch.zeros((len(self.agents), self.args.max_episode_len)).to(device)
-            dones = torch.zeros((len(self.agents), self.args.max_episode_len)).to(device)
-            nextdone = torch.zeros((len(self.agents), self.args.max_episode_len)).to(device)
-            value = torch.zeros((len(self.agents), self.args.max_episode_len)).to(device)
+            rewards_mappo_timestep = torch.zeros((len(self.agents), self.args.max_episode_len, 1)).to(device)
+            dones = torch.zeros((len(self.agents), self.args.max_episode_len, 1)).to(device)
+            nextdone = torch.zeros((len(self.agents), self.args.max_episode_len, 1)).to(device)
+            value = torch.zeros((len(self.agents), self.args.max_episode_len, 1)).to(device)
 
         s = self.env.reset()
         current_time_step = 0
@@ -85,12 +87,12 @@ class Runner:
                 s = self.env.reset()
                 rewards_list.append(rewards)
                 if self.algorithm == "MAPPO":
-                    u_joint.fill(0)
-                    obs_joint.fill(0)
+                    u_joint.zero_()
+                    obs_joint.zero_()
                     logprobs.zero_()
                     value.zero_()
                     rewards_mappo_timestep.zero_()
-                    next_obs.fill(0)
+                    next_obs.zero_()
                     dones.zero_()
                     nextdone.zero_()
 
@@ -104,10 +106,10 @@ class Runner:
                 for agent_id, agent in enumerate(self.agents):
                     if self.algorithm == "MAPPO":
                         action, pi2, probs, values = agent.select_action(s[agent_id], self.noise, self.epsilon, s)
-                        u_joint[agent_id] = pi2
-                        logprobs[agent_id] = probs
-                        value[agent_id] = values
-                        obs_joint[agent_id] = s[agent_id]
+                        u_joint[agent_id][current_time_step] = pi2
+                        logprobs[agent_id][current_time_step] = probs
+                        value[agent_id][current_time_step] = values
+                        obs_joint[agent_id][current_time_step] = torch.tensor(s[agent_id], dtype=torch.float32)
 
                     else:
                         action = agent.select_action(s[agent_id], self.noise, self.epsilon)
@@ -131,13 +133,14 @@ class Runner:
             train_returns_clip = train_returns[-800:]   # 取最后1000个时间步
             if self.algorithm == "MAPPO":
                 for agent in range(len(self.agents)):
-                    dones[agent].append(done)
-                    nextdone[agent] = dones[agent]
-                    next_obs[agent] = s_next[agent]
-                    rewards_mappo_timestep[agent] = r[agent]
+                    dones[agent][current_time_step] = done[agent]
+                    nextdone[agent][current_time_step] = done[agent]
+                    next_obs[agent][current_time_step] = torch.tensor(s_next[agent], dtype=torch.float32)
+
+                    rewards_mappo_timestep[agent][current_time_step] = r[agent]
 
 
-            if self.algorithm == "MADDPG" or "MASAC":
+            if self.algorithm == "MADDPG" or self.algorithm == "MASAC":
                 self.buffer.store_episode(s[:self.args.n_agents], u, r[:self.args.n_agents], s_next[:self.args.n_agents])
                 s = s_next
                 if self.buffer.current_size >= self.args.batch_size:
@@ -149,10 +152,10 @@ class Runner:
             elif self.algorithm == "MAPPO" and current_time_step % self.episode_limit == 0 and time_step > self.args.max_episode_len * self.args.update_epi\
                     or not (False in done):
 
-                for agent in self.agents:
-                    agent.learn(obs=obs_joint[agent], next_obs=next_obs[agent], values=value[agent],
-                                dones=dones[agent], actions=u_joint[agent], logprobs=logprobs[agent],
-                                rewards=rewards_mappo_timestep[agent], nextdone=nextdone[agent], time_steps=current_time_step)
+                for i, agent in enumerate(self.agents):
+                    agent.learn(transitions=None, other_agents=None, algorithm="MAPPO", obs=obs_joint, next_obs=next_obs, values=value[i],
+                                dones=dones[i], actions=u_joint[i], logprobs=logprobs[i],
+                                rewards=rewards_mappo_timestep[i], nextdone=nextdone[i], time_steps=current_time_step)
             current_time_step += 1
 
             if time_step > 0 and time_step % self.args.evaluate_rate == 0:

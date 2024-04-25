@@ -207,12 +207,12 @@ class World(object):  # 最关键的
         # 通信表，用来表示与所有agent的通信的逻辑关系
         self.comm_map = np.zeros((len(self.agents), len(self.agents)))
         # 通信范围
-        self.comm_range = 5
+        self.comm_range = 0.2
         # 边界
-        self.bound = 5
-        self.rebound = 0.25
+        self.bound = 1
+        self.rebound = 0.05
         self.dim_ac = 6
-        self.Na = 10
+        self.Na = 2
         # 定义是否在训练，这与状态有关
         self.train = True
 
@@ -301,8 +301,8 @@ class World(object):  # 最关键的
                 target.out = False
             # 对agent也就是无人机进行更新，位置，角度和
         for i, agent in enumerate(self.agents):
-            agent.state.move_angle += np.float((2 * agent.action.u[0] - self.Na - 1)) / (self.Na - 1) * 0.1 * self.dt
-            agent.state.p_vel += np.float((2 * agent.action.u[1] - self.Na - 1)) / (self.Na - 1) * 0.1 * self.dt  # 最大加速度为±5
+            agent.state.move_angle += np.float((2 * agent.action.u[0] - self.Na - 1)) / (self.Na - 1) * 0.02 * self.dt
+            agent.state.p_vel += np.float((2 * agent.action.u[1] - self.Na - 1)) / (self.Na - 1) * 0.02 * self.dt  # 最大加速度为±5
             # agent.state.p_pos[0] += agent.state.p_vel * math.cos(agent.state.move_angle *
             #                                                      (math.pi / 180)) * self.dt
             # agent.state.p_pos[1] += agent.state.p_vel * math.sin(agent.state.move_angle *

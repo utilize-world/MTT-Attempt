@@ -57,7 +57,7 @@ class Actor(nn.Module):
             #log_prob = probs.log_prob(actions)
         action_log_probs = torch.sum(torch.cat(action_log_probs, -1), -1, keepdim=True)
         log_prob = action_log_probs
-        entropy = entropys
+        entropy = sum(entropys)
         return actions, log_prob, entropy
 
     # def evaluate_action(self, observation, action):
@@ -100,9 +100,9 @@ class Critic(nn.Module):
         # 输出的是Q
 
     def forward(self, state):
-        if self.centralized_input:
-            # state = torch.cat(state, dim=1)  # 将state中的元素拼接，按照行并排的方式，得到联合状态
-            state = torch.cat(state, dim=1).squeeze(0)
+        # if self.centralized_input:
+        #     # state = torch.cat(state, dim=1)  # 将state中的元素拼接，按照行并排的方式，得到联合状态
+        #     state = torch.cat(state, dim=1)
         # 其实进来的结构是agent_number*batch*observation,拼接够会变成batch*(2*observation)
         # 具体有关cat  https://blog.csdn.net/scar2016/article/details/121382717
         # for i in range(len(action)):

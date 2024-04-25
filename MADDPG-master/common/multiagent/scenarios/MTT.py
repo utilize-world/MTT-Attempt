@@ -12,8 +12,8 @@ class Scenario(BaseScenario):
         :return: world
         """
         world = World()
-        world.comm_range = 0.4
-        world.bound = 5  # 尝试改变world的规模
+        world.comm_range = 0.08
+        world.bound = 1  # 尝试改变world的规模
         # set any world properties first
         # world.dim_c = 2     # 通信维度在这里也能定义，之前在core中已经定义过为3*agent的个数，这里将其注释掉
         num_uav = 2  # 就是UAVs个数
@@ -30,16 +30,16 @@ class Scenario(BaseScenario):
             agent.name = 'agent %d' % i
             agent.collide = True
             agent.silent = False
-            agent.obs_range = 0.5
-            agent.safe_range = 0.2
+            agent.obs_range = 0.1
+            agent.safe_range = 0.04
             # agent.adversary = True if i < num_adversaries else False    # 前面的为追踪者
-            agent.size = 0.06  # if agent.adversary else 0.05    # ?这个尺寸有什么用
+            agent.size = 0.015  # if agent.adversary else 0.05    # ?这个尺寸有什么用
             # agent.accel = 3.0 if agent.adversary else 4.0     # 不需要加速度，可以为0
             # agent.accel = 20.0 if agent.adversary else 25.0
             agent.max_speed = 1.0  # if agent.adversary else 1.3   # 最大速度，速度应设置为恒定，待修改
         for i, target in enumerate(world.targets_u):
             target.name = 'target %d' % i
-            target.size = 0.05
+            target.size = 0.015
         # add landmarks 这里应该没有
         world.landmarks = [Landmark() for i in range(num_landmarks)]
         # for i, landmark in enumerate(world.landmarks):
@@ -57,7 +57,7 @@ class Scenario(BaseScenario):
         这个是最关键的函数，是环境各变量初始化的步骤
         关于初始化的数据，仍有待考虑
         """
-        bound_ad_value = 0.5  # 这个用来调整随机生成时边界值
+        bound_ad_value = 0.1  # 这个用来调整随机生成时边界值
         # 定义了各实体的颜色
         for i, agent in enumerate(world.agents):
             agent.color = np.array([0.35, 0.85, 0.35])
@@ -69,19 +69,19 @@ class Scenario(BaseScenario):
         for agent in world.agents:
             agent.state.p_pos = np.random.uniform(bound_ad_value, world.bound - bound_ad_value, world.dim_p)
             # agent.state.p_pos = np.random.uniform(5, 10, world.dim_p)
-            agent.state.p_vel = np.random.uniform(-0.2, 0.2, 1)  # 注意这里的设置将其定义为常数
+            agent.state.p_vel = np.random.uniform(-0.04, 0.04, 1)  # 注意这里的设置将其定义为常数
             #agent.state.move_angle = np.random.uniform(-180, 180, 1)  # 取-180到180
             # 这里修改了，move_angle和p——vel分别对应速度
-            agent.state.move_angle = np.random.uniform(-0.2, 0.2, 1)
+            agent.state.move_angle = np.random.uniform(-0.04, 0.04, 1)
             agent.state.c = np.zeros(world.dim_c)
             agent.state.target_angle = 0
             agent.state.target_pos = np.zeros(world.dim_p)
         for target in world.targets_u:
             target.state.p_pos = np.random.uniform(bound_ad_value, world.bound - bound_ad_value, world.dim_p)
-            target.state.p_vel = 0.2
+            target.state.p_vel = 0.08
             target.state.move_angle = np.random.uniform(-180, 180, 1)  # 唯一与agent的不同就是速度稍慢
             target.state.move_angle = 1    # 固定角度，用来测试
-            target.state.p_pos = [0.5, 2.5]
+            target.state.p_pos = [0.5, 0.5]
         for i, landmark in enumerate(world.landmarks):
             if not landmark.boundary:
                 landmark.state.p_pos = np.random.uniform(-0.9, +0.9, world.dim_p)
@@ -193,7 +193,7 @@ class Scenario(BaseScenario):
         if dis_reward < -1:
             print("abnormal reward")
 
-        # dis_reward = -min(0.2*min_dis, 1)
+        dis_reward = -min(min_dis, 1)
         # dis_reward = float((agent.obs_range - min_dis)) / (min_dis + agent.obs_range * 0.25)  # 修改奖励
         # dis_reward = math.exp(agent.obs_range - min_dis)
 
@@ -242,11 +242,13 @@ class Scenario(BaseScenario):
         # low_reward = reward
         # if low_reward < 0:
         #     print('negative reward')
-        if safe_reward < 0:
-            print("not safe detected, agent:", agent_index, 'value:', safe_reward)
-        if bound_reward < 0:
-            print("out of boundary, agent:", agent_index, 'value', bound_reward)
-
+        # 打印提示信息
+        #####
+        # if safe_reward < 0:
+        #     print("not safe detected, agent:", agent_index, 'value:', safe_reward)
+        # if bound_reward < 0:
+        #     print("out of boundary, agent:", agent_index, 'value', bound_reward)
+        ###############
         return dis_reward
 
     # 以下是对手的奖励，这里也没用

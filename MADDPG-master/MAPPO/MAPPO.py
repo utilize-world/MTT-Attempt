@@ -84,13 +84,14 @@ class MAPPO:
     def save_model(self, train_step, agent_id):
         num = str(train_step // self.args.save_rate)
         model_path = os.path.join(self.args.save_dir, self.args.scenario_name)
+        model_path = os.path.join(model_path, "MAPPO")
         if not os.path.exists(model_path):
             os.makedirs(model_path)
         model_path = os.path.join(model_path, 'agent_%d' % agent_id)
         if not os.path.exists(model_path):
             os.makedirs(model_path)
-        torch.save(self.policy.state_dict(), model_path + '/' + 'MAPPO' + '/' + num + 'MAPPO_actor_params.pkl')
-        torch.save(self.critic.state_dict(), model_path + '/' + 'MAPPO' + '/' + num + 'MAPPO_critic_q1_params.pkl')
+        torch.save(self.policy.state_dict(), model_path + '/' + num + 'MAPPO_actor_params.pkl')
+        torch.save(self.critic.state_dict(), model_path + '/' + num + 'MAPPO_critic_q1_params.pkl')
 
 
     def load_model(self):
@@ -111,27 +112,32 @@ class MAPPO:
         """
         rewards = torch.tensor(rewards).to(self.device)
         next_obs, next_done = torch.Tensor(next_obs).to(self.device), torch.Tensor(nextdone).to(self.device)
-
+        next_obs = [i for i in next_obs]
+        next_obs = torch.cat(next_obs, dim=2)   # 处理一下next_obs
         with torch.no_grad():
-            next_value = self.critic(next_obs).reshape(1, -1)
-            advantages = torch.zeros_like(rewards).to(self.device)
+            next_value = self.critic(next_obs.squeeze(1)).reshape(-1)    # 处理一下维度，从200*1*38变成200*38
+            advantages = torch.zeros_like(rewards).to(self.device).reshape(-1)
             lastgaelam = 0
             for t in reversed(range(self.args.max_episode_len)):
                 if t == self.args.max_episode_len - 1:
-                    nextnonterminal = 1.0 - next_done
-                    nextvalues = next_value
+                    nextnonterminal = 1.0 - next_done[t]
+                    nextvalues = next_value[t]
+                    ######################## next_value[t] maybe mistake!!!!!!!!!!!!
                 else:
                     nextnonterminal = 1.0 - dones[t + 1]
                     nextvalues = values[t + 1]
                 delta = rewards[t] + self.args.gamma * nextvalues * nextnonterminal - values[t]
                 advantages[t] = lastgaelam = delta + self.args.gamma * self.args.gae_lambda * nextnonterminal * lastgaelam
-            returns = advantages + values
+            returns = advantages + values.reshape(-1)
 
         # flatten
         # b_obs = obs.reshape((-1,) + envs.single_observation_space.shape)
-        b_obs = obs.reshape((-1,) + self.args.obs_shape[agent_id].shape)
+        b_obs = obs[agent_id].reshape((-1, self.args.obs_shape[agent_id]))
+        obs_joint = [i for i in obs]
+        obs_joint = torch.cat(obs_joint, dim=2)  # 处理一下next_obs
+        b_obs_joint = obs_joint.reshape((-1,  sum(self.args.obs_shape)))
         b_logprobs = logprobs.reshape(-1)
-        b_actions = actions.reshape((-1,) + self.args.action_shape[agent_id].shape)
+        b_actions = actions.reshape((-1,  self.args.action_shape[agent_id]))
         b_advantages = advantages.reshape(-1)
         b_returns = returns.reshape(-1)
         b_values = values.reshape(-1)
@@ -140,14 +146,14 @@ class MAPPO:
         #np.random.shuffle(b_inds)
         for epoch in range(self.args.update_epi):
             np.random.shuffle(b_inds)
-            min_size = time_steps/10
+            min_size = int(time_steps/10) + 1
             for start in range(0, time_steps, min_size):
                 end = start + min_size
                 mb_inds = b_inds[start:end]
 
                 #_, newlogprob, entropy, newvalue = agent.get_action_and_value(obs[mb_inds], actions.long()[mb_inds])
                 _, newlogprob, entropy = self.actor.get_actions(b_obs[mb_inds], b_actions.long()[mb_inds])
-                newvalue = self.critic(b_obs[mb_inds])
+                newvalue = self.critic(b_obs_joint[mb_inds])
                 logratio = newlogprob - b_logprobs[mb_inds]
                 ratio = logratio.exp()
 

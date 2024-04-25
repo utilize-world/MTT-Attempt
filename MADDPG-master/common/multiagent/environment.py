@@ -279,7 +279,7 @@ class MultiAgentEnv(gym.Env):
             from multiagent import rendering
             # update bounds to center around agent
             # 这个range是什么，控制窗口的缩放系数
-            cam_range = 5
+            cam_range = 1
             if self.shared_viewer:
                 pos = np.zeros(self.world.dim_p)
             else:

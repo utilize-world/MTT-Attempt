@@ -87,3 +87,9 @@ import os
 def clear_folder(folder_path):
     shutil.rmtree(folder_path)
     os.mkdir(folder_path)
+
+# 用来设置调试的位置
+def begin_debug(condition):
+    import pdb
+    if condition:
+        pdb.set_trace()
