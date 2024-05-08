@@ -7,7 +7,7 @@ import torch
 from draw_plt import collect_data_and_save_drawings
 from utils import clear_folder
 seed = 0
-algorithm = "MASAC"
+algorithm = "MADDPG"
 if __name__ == '__main__':
     # get the params
     random.seed(seed)
@@ -19,7 +19,7 @@ if __name__ == '__main__':
     print(args)
     print(type(args))
     env, args = make_env(args)  # 将一系列输入的参数和环境作为变量，传递给下面的运行
-    runner = Runner(args, env, algorithm)  #
+    runner = Runner(args, env, algorithm, 0)  #
     clear_folder(runner.csv_save_dir)   # 清空目标文件夹中的所有文件
     clear_folder(runner.save_path)
 
@@ -29,7 +29,7 @@ if __name__ == '__main__':
     else:
         for i in range(1, index + 1):
             print("running")
-            runner = Runner(args, env, algorithm)
+            runner = Runner(args, env, algorithm, i)
             data = runner.run()
             collect_data_and_save_drawings(data=data,
                                            index=i,

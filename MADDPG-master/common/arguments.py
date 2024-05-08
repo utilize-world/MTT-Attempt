@@ -13,14 +13,14 @@ def get_args():
     parser.add_argument("--cuda", type=bool, default=True, help="cuda enable")
     # Environment
     parser.add_argument("--scenario-name", type=str, default="MTT", help="name of the scenario script")
-    parser.add_argument("--max-episode-len", type=int, default=200, help="maximum episode length")
-    parser.add_argument("--time-steps", type=int, default=100000, help="number of time steps")
+    parser.add_argument("--max-episode-len", type=int, default=500, help="maximum episode length")
+    parser.add_argument("--time-steps", type=int, default=200000, help="number of time steps")
     # 一个地图最多env.n个agents，用户可以定义min(env.n,num-adversaries)个敌人，剩下的是好的agent
     parser.add_argument("--num-adversaries", type=int, default=0, help="number of adversaries")
     # Core training parameters
     parser.add_argument("--lr-actor", type=float, default=1e-4, help="learning rate of actor")
     parser.add_argument("--lr-critic", type=float, default=1e-3, help="learning rate of critic")
-    parser.add_argument("--epsilon", type=float, default=0.1, help="epsilon greedy")
+    parser.add_argument("--epsilon", type=float, default=0.2, help="epsilon greedy")
     parser.add_argument("--noise_rate", type=float, default=0.1, help="noise rate for sampling from a standard normal distribution ")
     parser.add_argument("--gamma", type=float, default=0.95, help="discount factor")
     parser.add_argument("--tau", type=float, default=0.01, help="parameter for updating the target network")
@@ -48,8 +48,8 @@ def get_args():
     parser.add_argument("--csv-save-dir", type=str, default="./data_p", help="directory in which training data(including rewards at which training number)")
 
     # Evaluate
-    parser.add_argument("--evaluate-episodes", type=int, default=10, help="number of episodes for evaluating")
-    parser.add_argument("--evaluate-episode-len", type=int, default=200, help="length of episodes for evaluating")
+    parser.add_argument("--evaluate-episodes", type=int, default=5, help="number of episodes for evaluating")
+    parser.add_argument("--evaluate-episode-len", type=int, default=600, help="length of episodes for evaluating")
     parser.add_argument("--evaluate", type=bool, default=False, help="whether to evaluate the model")
     parser.add_argument("--evaluate-rate", type=int, default=10000, help="how often to evaluate model")
     args = parser.parse_args()

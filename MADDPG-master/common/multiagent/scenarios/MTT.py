@@ -12,11 +12,11 @@ class Scenario(BaseScenario):
         :return: world
         """
         world = World()
-        world.comm_range = 0.08
+        world.comm_range = 0.2
         world.bound = 1  # 尝试改变world的规模
         # set any world properties first
         # world.dim_c = 2     # 通信维度在这里也能定义，之前在core中已经定义过为3*agent的个数，这里将其注释掉
-        num_uav = 2  # 就是UAVs个数
+        num_uav = 1  # 就是UAVs个数
         num_target = 1  # 这个是target个数
 
         num_landmarks = 0  # 没有阻挡物
@@ -78,9 +78,9 @@ class Scenario(BaseScenario):
             agent.state.target_pos = np.zeros(world.dim_p)
         for target in world.targets_u:
             target.state.p_pos = np.random.uniform(bound_ad_value, world.bound - bound_ad_value, world.dim_p)
-            target.state.p_vel = 0.08
+            target.state.p_vel = 0.04
             target.state.move_angle = np.random.uniform(-180, 180, 1)  # 唯一与agent的不同就是速度稍慢
-            target.state.move_angle = 1    # 固定角度，用来测试
+            target.state.move_angle = 60    # 固定角度，用来测试
             target.state.p_pos = [0.5, 0.5]
         for i, landmark in enumerate(world.landmarks):
             if not landmark.boundary:
@@ -193,13 +193,13 @@ class Scenario(BaseScenario):
         if dis_reward < -1:
             print("abnormal reward")
 
-        dis_reward = -min(min_dis, 1)
+        dis_reward = - min_dis
         # dis_reward = float((agent.obs_range - min_dis)) / (min_dis + agent.obs_range * 0.25)  # 修改奖励
         # dis_reward = math.exp(agent.obs_range - min_dis)
 
-        if agent.obs_flag:
-            print("detected target")
-            dis_reward += 5
+        # if agent.obs_flag:
+        #     print("detected target")
+        #     dis_reward += 5
 
 
         # distance reward-------------------
@@ -301,12 +301,13 @@ class Scenario(BaseScenario):
         target_p = agent.state.target_pos  # 2
         agent_p = agent.state.p_pos  # 2
         vel = agent.state.p_vel # 1
-        obs = np.hstack((agent_p, agent.state.move_angle, target_p, agent.state.target_angle))
+        #obs = np.hstack((agent_p, agent.state.move_angle, target_p, agent.state.target_angle))
+        obs = np.hstack((agent_p, vel, agent.state.move_angle, target_p))
         obs_cat_com = np.hstack((agent_p, vel, agent.state.move_angle, target_p, agent.state.target_angle, comm))
         # 18
         # 这里先不考虑通信
         # return np.hstack((agent_p, agent.state.move_angle, target_p, agent.state.target_angle, comm))
-        return obs_cat_com
+        return obs
 
     # def observation(self, agent, world):
     #     """

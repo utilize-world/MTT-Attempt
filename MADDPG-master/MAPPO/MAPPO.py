@@ -190,10 +190,10 @@ class MAPPO:
                 entropy_loss = entropy.mean()
                 loss = pg_loss - self.args.ent_coef * entropy_loss + v_loss * self.args.vf_coef
 
-                optimizer.zero_grad()
+                self.q_optimizer.zero_grad()
                 loss.backward()
                 nn.utils.clip_grad_norm_(agent.parameters(), args.max_grad_norm)
-                optimizer.step()
+                self.q_optimizer.step()
 
             if self.args.target_kl is not None and approx_kl > self.args.target_kl:
                 break

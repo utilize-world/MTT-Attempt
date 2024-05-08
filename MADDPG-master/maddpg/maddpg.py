@@ -37,13 +37,14 @@ class MADDPG:
             os.mkdir(self.model_path)
 
         # 加载模型
-        if os.path.exists(self.model_path + '/actor_params.pkl'):
-            self.actor_network.load_state_dict(torch.load(self.model_path + '/actor_params.pkl'))
-            self.critic_network.load_state_dict(torch.load(self.model_path + '/critic_params.pkl'))
+
+        if os.path.exists(self.model_path + '/_actor_params.pkl') and self.args.evaluate == True:
+            self.actor_network.load_state_dict(torch.load(self.model_path + '/_actor_params.pkl'))
+            self.critic_network.load_state_dict(torch.load(self.model_path + '/_critic_params.pkl'))
             print('Agent {} successfully loaded actor_network: {}'.format(self.agent_id,
-                                                                          self.model_path + '/actor_params.pkl'))
+                                                                          self.model_path + '/_actor_params.pkl'))
             print('Agent {} successfully loaded critic_network: {}'.format(self.agent_id,
-                                                                           self.model_path + '/critic_params.pkl'))
+                                                                           self.model_path + '/_critic_params.pkl'))
 
     # soft update
     def _soft_update_target_network(self):
@@ -114,6 +115,7 @@ class MADDPG:
         model_path = os.path.join(model_path, 'agent_%d' % self.agent_id)
         if not os.path.exists(model_path):
             os.makedirs(model_path)
-        torch.save(self.actor_network.state_dict(), model_path + '/' + num + '_actor_params.pkl')
-        torch.save(self.critic_network.state_dict(), model_path + '/' + num + '_critic_params.pkl')
-
+        # torch.save(self.actor_network.state_dict(), model_path + '/' + num + '_actor_params.pkl')
+        # torch.save(self.critic_network.state_dict(), model_path + '/' + num + '_critic_params.pkl')
+        torch.save(self.actor_network.state_dict(), model_path + '/' + '_actor_params.pkl')
+        torch.save(self.critic_network.state_dict(), model_path + '/' + '_critic_params.pkl')

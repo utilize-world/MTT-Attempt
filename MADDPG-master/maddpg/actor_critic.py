@@ -19,7 +19,7 @@ class Actor(nn.Module):
         x = F.relu(self.fc1(x))     # 一层层连接，一共三层
         x = F.relu(self.fc2(x))
         x = F.relu(self.fc3(x))
-        actions = np.int((self.max_action-self.min_action)/2) * torch.tanh(self.action_out(x))  # 控制在[-1,1]*max_action
+        actions = ((self.max_action-self.min_action)/2) * torch.tanh(self.action_out(x))  # 控制在[-1,1]*max_action
 
         return actions
 

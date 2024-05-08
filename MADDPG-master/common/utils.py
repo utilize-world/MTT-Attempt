@@ -72,14 +72,38 @@ def find_index(distance_map):  # 将distance_map中的数升序排列，返回�
 def check_agent_bound(agents_array, max_bound, low_bound):
     is_bound = []
     is_bound_all = True
+    ab = 0.1
     # 如果全部都出界，则为True
     for agent in agents_array:
-        is_bound.append((agent.state.p_pos.any() > max_bound) or (agent.state.p_pos.any() < low_bound))
-    for i in range(len(is_bound)):
-        if not is_bound[i]:
-            is_bound_all = False
+        max_flag = [x > max_bound + ab for x in agent.state.p_pos]
+        min_flag = [x < low_bound - ab for x in agent.state.p_pos]
+        if True in max_flag or (True in min_flag):
+            out = True
+        else:
+            out = False
+        is_bound.append(out)
+
+    if False in is_bound:
+        is_bound_all = False
     return is_bound_all
 
+
+def check_agent_near_bound(agents_array, max_bound, low_bound):
+    is_bound = []
+    is_bound_all = True
+    # 如果全部都出界，则为True
+    for agent in agents_array:
+        max_flag = [x > max_bound for x in agent.state.p_pos]
+        min_flag = [x < low_bound for x in agent.state.p_pos]
+        if True in max_flag or (True in min_flag):
+            out = True
+        else:
+            out = False
+        is_bound.append(out)
+
+    if False in is_bound:
+        is_bound_all = False
+    return is_bound_all
 
 import shutil
 import os

@@ -5,22 +5,26 @@ import torch
 import os
 import numpy as np
 import matplotlib.pyplot as plt
+from utils import begin_debug
 
-from common.utils import check_agent_bound
+from common.utils import check_agent_bound, check_agent_near_bound
 from maddpg.maddpg import MADDPG
 from MASAC.MASAC import MASAC
 from MAPPO.MAPPO import MAPPO
+
 
 class Runner:
     """
     input: (args, env)
     """
-    def __init__(self, args, env, algorithm):
+
+    def __init__(self, args, env, algorithm, number):
         self.args = args
         self.noise = args.noise_rate
         self.epsilon = args.epsilon
         self.episode_limit = args.max_episode_len
         self.env = env
+        self.number = number
         self.algorithm = algorithm
         self.agents = self._init_agents(self.algorithm)
         self.buffer = Buffer(args)
@@ -43,8 +47,8 @@ class Runner:
                 policy = MADDPG(self.args, i)
                 agent = Agent(i, self.args, policy, algorithms)
                 agents.append(agent)
-        elif algorithms == "MASAC" :
-            policy = MASAC(self.args)   # 采用共享参数的方式
+        elif algorithms == "MASAC":
+            policy = MASAC(self.args)  # 采用共享参数的方式
             for i in range(self.args.n_agents):
                 agent = Agent(i, self.args, policy, algorithms)
                 agents.append(agent)
@@ -61,14 +65,20 @@ class Runner:
         train_returns = []
         done = False
         rewards_list = []
+        done_list = []
         rewards_epi = []
+        out_symbol = False
+        critical_done = False
         if self.algorithm == "MAPPO":
             device = torch.device("cuda" if torch.cuda.is_available() and self.args.cuda else "cpu")
-            u_joint = torch.zeros((len(self.agents), self.args.max_episode_len) + (1, self.args.action_shape[0])).to(device)
+            u_joint = torch.zeros((len(self.agents), self.args.max_episode_len) + (1, self.args.action_shape[0])).to(
+                device)
             # 3 * 200 * (1 * 2)
-            obs_joint = torch.zeros((len(self.agents), self.args.max_episode_len) + ((1, self.args.obs_shape[0]))).to(device)
+            obs_joint = torch.zeros((len(self.agents), self.args.max_episode_len) + ((1, self.args.obs_shape[0]))).to(
+                device)
             # 3* 200 * 1 *19
-            next_obs = torch.zeros((len(self.agents), self.args.max_episode_len) + ((1, self.args.obs_shape[0]))).to(device)
+            next_obs = torch.zeros((len(self.agents), self.args.max_episode_len) + ((1, self.args.obs_shape[0]))).to(
+                device)
             logprobs = torch.zeros((len(self.agents), self.args.max_episode_len, 1)).to(device)
             # rewards is shared
             rewards_mappo_timestep = torch.zeros((len(self.agents), self.args.max_episode_len, 1)).to(device)
@@ -80,12 +90,13 @@ class Runner:
         current_time_step = 0
         for time_step in tqdm(range(self.args.time_steps)):
             # reset the environment
-            #
+            # debug
+            # begin_debug(time_step % 70000 == 0 and time_step > 0)
 
-
-            if current_time_step % self.episode_limit == 0 or not (False in done):
+            # if (current_time_step % self.episode_limit == 0) or not (False in done) or critical_done:
+            if (current_time_step % self.episode_limit == 0) or critical_done or ([0] not in done_list[-200:]):
                 s = self.env.reset()
-                rewards_list.append(rewards)
+
                 if self.algorithm == "MAPPO":
                     u_joint.zero_()
                     obs_joint.zero_()
@@ -97,9 +108,10 @@ class Runner:
                     nextdone.zero_()
 
                 current_time_step = 0
-
-                rewards_list = rewards_list[-2000:]   # 取最后2000个训练episode
+                rewards_list.append(rewards)
+                rewards_list = rewards_list[-50000:]  # 取最后2000个训练episode
                 rewards = 0
+
             u = []
             actions = []
             with torch.no_grad():
@@ -121,16 +133,18 @@ class Runner:
             s_next, r, done, info = self.env.step(actions)
             # 这地方新加的，如果全部出界，则结束当前episode，并给予惩罚
             critical_done = check_agent_bound(self.env.world.agents, self.env.world.bound, 0)
+            done_list.append(done)
+            if check_agent_near_bound(self.env.world.agents, self.env.world.bound, 0):
+                r = [x - 1 for x in r]
             if critical_done:
                 # 如果全出界了，直接每人-100
-                for re in r:
-                    re += -100
+                r = [x - 10 for x in r]
+            ################### 单个的时候就不考虑这个奖励了
             if not (False in done):
-                for re in r:
-                    re += +100
+                r = [x + 5 for x in r]
             rewards += float(sum(r)) / float(len(self.agents))  # 这里的 reward是一个episode的reward
-            train_returns.append(rewards)                      # 这里的train——returns是取每个时间步的reward
-            train_returns_clip = train_returns[-800:]   # 取最后1000个时间步
+            train_returns.append(rewards)  # 这里的train——returns是取每个时间步的reward
+            train_returns_clip = train_returns[-1000:]  # 取最后1000个时间步
             if self.algorithm == "MAPPO":
                 for agent in range(len(self.agents)):
                     dones[agent][current_time_step] = done[agent]
@@ -139,9 +153,9 @@ class Runner:
 
                     rewards_mappo_timestep[agent][current_time_step] = r[agent]
 
-
             if self.algorithm == "MADDPG" or self.algorithm == "MASAC":
-                self.buffer.store_episode(s[:self.args.n_agents], u, r[:self.args.n_agents], s_next[:self.args.n_agents])
+                self.buffer.store_episode(s[:self.args.n_agents], u, r[:self.args.n_agents],
+                                          s_next[:self.args.n_agents])
                 s = s_next
                 if self.buffer.current_size >= self.args.batch_size:
                     transitions = self.buffer.sample(self.args.batch_size)
@@ -149,20 +163,18 @@ class Runner:
                         other_agents = self.agents.copy()
                         other_agents.remove(agent)
                         agent.learn(transitions, other_agents, self.algorithm)
-            elif self.algorithm == "MAPPO" and current_time_step % self.episode_limit == 0 and time_step > self.args.max_episode_len * self.args.update_epi\
+            elif self.algorithm == "MAPPO" and current_time_step % self.episode_limit == 0 and time_step > self.args.max_episode_len * self.args.update_epi \
                     or not (False in done):
 
                 for i, agent in enumerate(self.agents):
-                    agent.learn(transitions=None, other_agents=None, algorithm="MAPPO", obs=obs_joint, next_obs=next_obs, values=value[i],
+                    agent.learn(transitions=None, other_agents=None, algorithm="MAPPO", obs=obs_joint,
+                                next_obs=next_obs, values=value[i],
                                 dones=dones[i], actions=u_joint[i], logprobs=logprobs[i],
                                 rewards=rewards_mappo_timestep[i], nextdone=nextdone[i], time_steps=current_time_step)
             current_time_step += 1
 
             if time_step > 0 and time_step % self.args.evaluate_rate == 0:
                 returns.append(self.evaluate())
-
-
-
 
                 plt.figure(figsize=(20, 10))
 
@@ -183,7 +195,7 @@ class Runner:
                 plt.xlabel('training episode')
                 plt.ylabel('average returns')
                 plt.title('training episode rewards')
-                plt.savefig(self.save_path + '/plt.png', format='png')
+                plt.savefig(self.save_path + '/plt' + str(self.number) + '.png', format='png')
 
                 plt.close()  # 不用每次都跳出来
 
@@ -195,7 +207,9 @@ class Runner:
 
     def evaluate(self):
         returns = []
-        self.env.world.train = False    # 将模式调整为执行
+        self.env.world.train = False  # 将模式调整为执行
+        if self.args.evaluate:
+            self.agents = self._init_agents(self.algorithm)
         for episode in range(self.args.evaluate_episodes):
             # reset the environment
             s = self.env.reset()
@@ -210,9 +224,21 @@ class Runner:
                 # for i in range(self.args.n_agents, self.args.n_players):      # 这一步可能不太需要，所以注释
                 #     actions.append([0, np.random.rand() * 2 - 1, 0, np.random.rand() * 2 - 1, 0])
                 s_next, r, done, info = self.env.step(actions)
+                critical_done = check_agent_bound(self.env.world.agents, self.env.world.bound, 0)
+
+                if check_agent_near_bound(self.env.world.agents, self.env.world.bound, 0):
+                    r = [x - 1 for x in r]
+                if critical_done:
+                    # 如果全出界了，直接每人-100
+                    r = [x - 10 for x in r]
+                ################### 单个的时候就不考虑这个奖励了
+                if not (False in done):
+                    r = [x + 5 for x in r]
                 # rewards += r[0]     # ？？为什么是r[0],是因为采用shared reward？
-                rewards += sum(r)/len(self.agents)
+                rewards += sum(r) / len(self.agents)
                 s = s_next
+                if critical_done:
+                    break
             returns.append(rewards)
             print('Returns is', rewards)
         return sum(returns) / self.args.evaluate_episodes

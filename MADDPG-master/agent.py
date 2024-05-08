@@ -20,12 +20,12 @@ class Agent:
             pi = self.policy.actor_network(inputs).squeeze(0)   # 压缩第0位的一维向量,这里policy的输出是tensor(64,action_shape),最后变成(1,action_shape)
             # print('{} : {}'.format(self.name, pi))
             u = pi.cpu().numpy()
-            noise = 2 * noise_rate * ((self.args.high_action-self.args.low_action)/2) * np.random.randn(*u.shape) # gaussian noise
+            noise = noise_rate * ((self.args.high_action-self.args.low_action)/2) * np.random.randn(*u.shape) # gaussian noise
             u += noise
-            u = np.clip(u, np.int(-(self.args.high_action-self.args.low_action)/2),
-                        np.int((self.args.high_action-self.args.low_action)/2))
+            u = np.clip(u, np.float(-(self.args.high_action-self.args.low_action)/2),
+                        np.float((self.args.high_action-self.args.low_action)/2))
             # np.clip(a, a_min, a_max, out=None) 限制其值在amin，amax之间
-            u += np.int((self.args.high_action-self.args.low_action)/2)     # 要限制其动作在0到high_action内
+            u += np.float((self.args.high_action-self.args.low_action)/2)     # 要限制其动作在0到high_action内
 
         elif self.algorithm == "MASAC" or self.algorithm == "MAPPO":
             inputs = torch.tensor(o, dtype=torch.float32).unsqueeze(0)
@@ -33,8 +33,8 @@ class Agent:
             pi = pi2
             pi = pi.squeeze(0)
             u = pi.cpu().numpy()
-            u = np.clip(u, np.int(-(self.args.high_action - self.args.low_action) / 2),
-                        np.int((self.args.high_action - self.args.low_action) / 2))
+            u = np.clip(u, np.float(-(self.args.high_action - self.args.low_action) / 2),
+                        np.float((self.args.high_action - self.args.low_action) / 2))
             # np.clip(a, a_min, a_max, out=None) 限制其值在amin，amax之间
             u += np.int((self.args.high_action - self.args.low_action) / 2)
             if self.algorithm == "MAPPO":

@@ -2,7 +2,7 @@ import numpy as np
 import math
 
 import numpy.random
-
+from utils import begin_debug
 from utils import find_index
 
 
@@ -208,11 +208,11 @@ class World(object):  # 最关键的
         self.comm_map = np.zeros((len(self.agents), len(self.agents)))
         # 通信范围
         self.comm_range = 0.2
-        # 边界
+        # 边
         self.bound = 1
         self.rebound = 0.05
         self.dim_ac = 6
-        self.Na = 2
+        self.Na = 20
         # 定义是否在训练，这与状态有关
         self.train = True
 
@@ -303,6 +303,9 @@ class World(object):  # 最关键的
         for i, agent in enumerate(self.agents):
             agent.state.move_angle += np.float((2 * agent.action.u[0] - self.Na - 1)) / (self.Na - 1) * 0.02 * self.dt
             agent.state.p_vel += np.float((2 * agent.action.u[1] - self.Na - 1)) / (self.Na - 1) * 0.02 * self.dt  # 最大加速度为±5
+            # agent.state.move_angle += np.float((agent.action.u[0] - ((self.Na + 1)/2))) * 0.02 * self.dt
+            # agent.state.p_vel += np.float((agent.action.u[1] - ((self.Na + 1)/2))) * 0.02 * self.dt
+
             # agent.state.p_pos[0] += agent.state.p_vel * math.cos(agent.state.move_angle *
             #                                                      (math.pi / 180)) * self.dt
             # agent.state.p_pos[1] += agent.state.p_vel * math.sin(agent.state.move_angle *
@@ -327,6 +330,10 @@ class World(object):  # 最关键的
                 # 判断其余的agent是否在通信范围内
                 # 更新通信表
                 self.comm_map = self.update_comm_map(self.distance_cal_agent())
+                #### test_code
+                # begin_debug(True in self.comm_map)
+
+                ####
                 for flag in self.comm_map[i]:
                     # 检查每一行，自己肯定是0，j代表这一行对应的其他的agent的下标
                     if flag:
@@ -377,7 +384,7 @@ class World(object):  # 最关键的
     def distance_cal_agent(self):
         distance_map = np.zeros((len(self.agents), len(self.agents)))
         for i in range(len(self.agents)):
-            for j in range(len(self.targets_u)):
+            for j in range(len(self.agents)):
                 if i == j:
                     distance_map[i][j] = 0
                 else:

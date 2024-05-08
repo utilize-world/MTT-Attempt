@@ -1,0 +1,18 @@
+[33mb737a83[m[33m ([m[1;36mHEAD -> [m[1;32msimplified_version[m[33m)[m HEAD@{0}: commit: complete MAPPO, but debug needed for MASAC and MAPPO
+[33m5a6e6e3[m HEAD@{1}: commit: revised MASAC, MAPPO, MAPPO under develop, and MADDPG get results saved version
+[33m3a9ddbc[m HEAD@{2}: commit: add MAPPO, however, the result of MADDPG is still confusing
+[33mf235765[m HEAD@{3}: commit: trying to use a easy-implemented PPO code
+[33m26d123b[m HEAD@{4}: commit: modified MASAC alg., while the results remain difficult to converge, that's so tough. Besides add MAPPO, but yet incomplete. Really the bad day
+[33mdb776bb[m[33m ([m[1;31mMTT/simplified_version[m[33m)[m HEAD@{5}: commit: add MASAC algorithms and a trainable version of MADDPG, sometimes work... But lazy agents phenomenon is unforbidable.
+[33me4ab94d[m HEAD@{6}: reset: moving to e4ab94d
+[33m5f970cc[m HEAD@{7}: commit: change dynamic equation
+[33me4ab94d[m HEAD@{8}: commit: change the bound into 5, make some arguments modifications
+[33me8d6853[m HEAD@{9}: commit: change a velocity into control and agent number into 2, target number into 1, and relatively modifications
+[33m2b455c8[m[33m ([m[1;32mversion_a[m[33m)[m HEAD@{10}: checkout: moving from version_a to simplified_version
+[33m2b455c8[m[33m ([m[1;32mversion_a[m[33m)[m HEAD@{11}: commit: add MASAC part, but not complete, with different actors. instead of sharing parameters, the later work should focus on using single actor to accelerate training
+[33m6b5ab65[m HEAD@{12}: commit: change target state avalible when excute, and modifying some parameters
+[33maace540[m HEAD@{13}: commit: test
+[33m7529d2f[m[33m ([m[1;31mMTT/main[m[33m, [m[1;32mmain[m[33m)[m HEAD@{14}: checkout: moving from main to version_a
+[33m7529d2f[m[33m ([m[1;31mMTT/main[m[33m, [m[1;32mmain[m[33m)[m HEAD@{15}: commit: add readme
+[33m73690cf[m HEAD@{16}: Branch: renamed refs/heads/master to refs/heads/main
+[33m73690cf[m HEAD@{18}: commit (initial): first commit
