@@ -57,6 +57,8 @@ def make_env(args):
     args.action_shape = [2 for i in range(args.n_agents)]  # 这里直接设置动作维度为1，所以前面的可能没用了
     args.high_action = world.Na
     args.low_action = 1
+    # args.high_action = world.Na       # directly define the max_accelaration
+    # args.low_action = -world.Na
     return env, args
 
 

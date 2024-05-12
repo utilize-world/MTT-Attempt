@@ -94,7 +94,7 @@ class Runner:
             # begin_debug(time_step % 70000 == 0 and time_step > 0)
 
             # if (current_time_step % self.episode_limit == 0) or not (False in done) or critical_done:
-            if (current_time_step % self.episode_limit == 0) or critical_done or ([0] not in done_list[-200:]):
+            if (current_time_step % self.episode_limit == 0) or critical_done :
                 s = self.env.reset()
 
                 if self.algorithm == "MAPPO":
@@ -159,10 +159,14 @@ class Runner:
                 s = s_next
                 if self.buffer.current_size >= self.args.batch_size:
                     transitions = self.buffer.sample(self.args.batch_size)
-                    for agent in self.agents:
+                    import copy
+                    trans = [copy.copy(transitions) for x in range(len(self.agents))]
+                    # 复制多份，因为经过learn之后的critic网络后，transition的动作发生了改变？是什么将u和transition绑定在一起了？
+                    for i, agent in enumerate(self.agents):
                         other_agents = self.agents.copy()
                         other_agents.remove(agent)
-                        agent.learn(transitions, other_agents, self.algorithm)
+                        #agent.learn(transitions, other_agents, self.algorithm)
+                        agent.learn(trans[i], other_agents, self.algorithm)
             elif self.algorithm == "MAPPO" and current_time_step % self.episode_limit == 0 and time_step > self.args.max_episode_len * self.args.update_epi \
                     or not (False in done):
 

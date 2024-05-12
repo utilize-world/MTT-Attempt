@@ -54,19 +54,18 @@ class MASAC:
         model_path = os.path.join(model_path, 'agent_%d' % agent_id)
         if not os.path.exists(model_path):
             os.makedirs(model_path)
-        torch.save(self.policy.state_dict(), model_path  + '/' + num + 'MASAC_actor_params.pkl')
-        torch.save(self.qf1.state_dict(), model_path +  '/' + num + 'MASAC_critic_q1_params.pkl')
-        torch.save(self.qf2.state_dict(), model_path +  '/' + num + 'MASAC_critic_q2_params.pkl')
-
+        torch.save(self.policy.state_dict(), model_path + '/' + num + 'MASAC_actor_params.pkl')
+        torch.save(self.qf1.state_dict(), model_path + '/' + num + 'MASAC_critic_q1_params.pkl')
+        torch.save(self.qf2.state_dict(), model_path + '/' + num + 'MASAC_critic_q2_params.pkl')
 
     def load_model(self):
         pass
 
     def _soft_update_target_network(self):
-        for target_param, param in zip(self.qf1.parameters(), self.qf1_t.parameters()):
+        for param, target_param in zip(self.qf1.parameters(), self.qf1_t.parameters()):
             target_param.data.copy_((1 - self.args.tau) * target_param.data + self.args.tau * param.data)
 
-        for target_param, param in zip(self.qf2.parameters(), self.qf2_t.parameters()):
+        for param, target_param in zip(self.qf2.parameters(), self.qf2_t.parameters()):
             target_param.data.copy_((1 - self.args.tau) * target_param.data + self.args.tau * param.data)
 
     def train(self, transitions, agent_id):
@@ -87,20 +86,23 @@ class MASAC:
         next_state_log = []
         with torch.no_grad():
 
-            #u_next, next_state_log_pi = self.policy.get_actions(o_next)#报错，格式不对
+            # u_next, next_state_log_pi = self.policy.get_actions(o_next)#报错，格式不对
             for i in range(self.args.n_agents):
                 u_next_i, next_state_log_i, _ = self.policy.get_actions(o_next[i])
                 # 256*2, 256*1
-                u_next.append(u_next_i) # list2, tensor 256*2
-                next_state_log.append(next_state_log_i) # list2,tensor 256*1
+                u_next.append(u_next_i)  # list2, tensor 256*2
+                next_state_log.append(next_state_log_i)  # list2,tensor 256*1
             # next_state_log : 2 * tensor(256,1)
             # u_next: agent_number * batch_size * action shape.  e.g. 2* tensor(256, 2)
             # q_next: agent_number * batch * 1          e.g. 2 * tensor(256, 1)
-            q1_next_target = self.qf1_t(o_next, u_next).detach()
-            q2_next_target = self.qf2_t(o_next, u_next).detach()
+            q1_next_target = self.qf1_t(o_next, u_next)
+            q2_next_target = self.qf2_t(o_next, u_next)
             next_state_log_pi = einops.reduce(
                 next_state_log, "c b a -> b a", "sum"
             )
+            min_qf_next_target = (torch.min(q1_next_target,
+                                            q2_next_target) - self.alpha * next_state_log_pi)  # 相当于往Q里加了log
+            next_q_value = (r.unsqueeze(1) + self.args.gamma * (min_qf_next_target)).view(-1)
             # 这里相当于把每个agent的log概率加起来，结构应该是这样的
             #
             #                  表示的只是数据的数组形式，并不是一种数据结构
@@ -113,14 +115,12 @@ class MASAC:
         qf1_a_values = self.qf1(o, u).view(-1)
         qf2_a_values = self.qf2(o, u).view(-1)
         # qf1_a_value tensor (256,)
-        min_qf_next_target = (torch.min(q1_next_target,
-                                        q2_next_target) - self.alpha * next_state_log_pi) # 相当于往Q里加了log
-        next_q_value = (r.unsqueeze(1) + self.args.gamma * (min_qf_next_target)).view(-1)
+
         # 这里应该有一个（1-done）在gamma后才对
         qf1_loss = F.mse_loss(qf1_a_values, next_q_value)
         qf2_loss = F.mse_loss(qf2_a_values, next_q_value)
-        qf1_loss = (next_q_value - qf1_a_values).pow(2).mean()
-        qf2_loss = (next_q_value - qf2_a_values).pow(2).mean()
+        # qf1_loss = (next_q_value - qf1_a_values).pow(2).mean()
+        # qf2_loss = (next_q_value - qf2_a_values).pow(2).mean()
         qf_loss = (qf1_loss + qf2_loss)
         # qf_loss = (qf1_loss + qf2_loss)
         self.q_optimizer.zero_grad()
@@ -128,8 +128,8 @@ class MASAC:
         self.q_optimizer.step()
         self.train_step += 1
         # actor update,之前的数据都是在联合角度来看，actor的更新是对于每个agent本身的本地观察生效，而且遵循TD3的延迟更新
-        #if self.train_step > 0 and self.train_step % self.args.save_rate == 0:
-        if self.train_step > 0 and self.train_step % 10 == 0:
+        # if self.train_step > 0 and self.train_step % self.args.save_rate == 0:
+        if self.train_step > 0 and self.train_step % 1 == 0:
             # 如果确认更新
             u_pi = []
             state_log_pi = []
@@ -138,11 +138,11 @@ class MASAC:
                 u_pi.append(u_pi_i)
                 state_log_pi.append(state_log_pi_i)
             log_pi = einops.reduce(
-            state_log_pi, "c b a -> b a", "sum"
+                state_log_pi, "c b a -> b a", "sum"
             )
             qf1_pi = self.qf1(o, u_pi)
             qf2_pi = self.qf2(o, u_pi)
-            min_qf_pi = torch.min(qf1_pi, qf2_pi)
+            min_qf_pi = torch.min(qf1_pi, qf2_pi).view(-1)
             actor_loss = (((self.alpha * log_pi) - min_qf_pi).mean())
 
             self.actor_optimizer.zero_grad()
@@ -157,15 +157,15 @@ class MASAC:
                     state_log_pi.append(state_log_pi_i)
                 log_pi = einops.reduce(
                     state_log_pi, "c b a -> b a", "sum"
-                    )
-            alpha_loss = (-self.log_alpha * (log_pi + self.target_entropy)).mean()
+                )
+            alpha_loss = (-self.log_alpha * (log_pi + self.target_entropy).detach()).mean()
 
             self.a_optimizer.zero_grad()
             alpha_loss.backward()
             self.a_optimizer.step()
             self.alpha = self.log_alpha.exp().item()
+            ###
+        self._soft_update_target_network()
 
-            if self.train_step > 0 and self.train_step % self.args.save_rate == 0:
-                self.save_model(self.train_step, agent_id)
-
-
+        if self.train_step > 0 and self.train_step % self.args.save_rate == 0:
+            self.save_model(self.train_step, agent_id)

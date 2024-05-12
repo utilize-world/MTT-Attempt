@@ -10,12 +10,13 @@ class Actor(nn.Module):
         super(Actor, self).__init__()
         self.max_action = args.high_action
         self.min_action = args.low_action
-        self.fc1 = nn.Linear(args.obs_shape[agent_id], 64)  # 18*64
+        self.fc1 = nn.Linear(args.obs_shape[agent_id] + args.goal_shape[agent_id] + 1, 64)  # 18*64
         self.fc2 = nn.Linear(64, 64)            # Fully connected
         self.fc3 = nn.Linear(64, 64)
         self.action_out = nn.Linear(64, args.action_shape[agent_id])
 
-    def forward(self, x):
+    def forward(self, obs, goal, step_left):
+        x = torch.cat((obs, goal, step_left), dim=1)
         x = F.relu(self.fc1(x))     # 一层层连接，一共三层
         x = F.relu(self.fc2(x))
         x = F.relu(self.fc3(x))

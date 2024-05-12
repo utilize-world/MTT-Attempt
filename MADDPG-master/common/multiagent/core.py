@@ -284,6 +284,8 @@ class World(object):  # 最关键的
                                                                    (math.pi / 180)) * self.dt
             target.state.p_pos[1] += target.state.p_vel * math.sin(target.state.move_angle *
                                                                    (math.pi / 180)) * self.dt
+
+
             # # 随机游动，这里取得是
             # if not target.out:    # 如果没出界
             #     target.state.move_angle += numpy.random.uniform(-180, 180) / 8  # 每步最大变化±π/8
@@ -303,8 +305,8 @@ class World(object):  # 最关键的
         for i, agent in enumerate(self.agents):
             agent.state.move_angle += np.float((2 * agent.action.u[0] - self.Na - 1)) / (self.Na - 1) * 0.02 * self.dt
             agent.state.p_vel += np.float((2 * agent.action.u[1] - self.Na - 1)) / (self.Na - 1) * 0.02 * self.dt  # 最大加速度为±5
-            # agent.state.move_angle += np.float((agent.action.u[0] - ((self.Na + 1)/2))) * 0.02 * self.dt
-            # agent.state.p_vel += np.float((agent.action.u[1] - ((self.Na + 1)/2))) * 0.02 * self.dt
+            # agent.state.move_angle += agent.action.u[0] * self.dt     # directly apply the u to velocity control
+            # agent.state.p_vel += agent.action.u[1] * self.dt
 
             # agent.state.p_pos[0] += agent.state.p_vel * math.cos(agent.state.move_angle *
             #                                                      (math.pi / 180)) * self.dt

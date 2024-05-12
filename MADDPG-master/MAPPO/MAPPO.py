@@ -127,7 +127,10 @@ class MAPPO:
                     nextnonterminal = 1.0 - dones[t + 1]
                     nextvalues = values[t + 1]
                 delta = rewards[t] + self.args.gamma * nextvalues * nextnonterminal - values[t]
+
                 advantages[t] = lastgaelam = delta + self.args.gamma * self.args.gae_lambda * nextnonterminal * lastgaelam
+
+            assert 0 not in advantages.detach().numpy(), "0 in adv"
             returns = advantages + values.reshape(-1)
 
         # flatten
@@ -152,11 +155,12 @@ class MAPPO:
                 mb_inds = b_inds[start:end]
 
                 #_, newlogprob, entropy, newvalue = agent.get_action_and_value(obs[mb_inds], actions.long()[mb_inds])
+
                 _, newlogprob, entropy = self.actor.get_actions(b_obs[mb_inds], b_actions.long()[mb_inds])
                 newvalue = self.critic(b_obs_joint[mb_inds])
                 logratio = newlogprob - b_logprobs[mb_inds]
                 ratio = logratio.exp()
-
+                assert ratio is not None, "error ratio"
                 with torch.no_grad():
                     # calculate approx_kl http://joschu.net/blog/kl-approx.html
                     old_approx_kl = (-logratio).mean()
@@ -164,14 +168,15 @@ class MAPPO:
                     clipfracs += [((ratio - 1.0).abs() > self.args.clip_coef).float().mean().item()]
 
                 mb_advantages = b_advantages[mb_inds]
-                if True:    # use normalized adv func
+                if False:    # use normalized adv func
                     mb_advantages = (mb_advantages - mb_advantages.mean()) / (mb_advantages.std() + 1e-8)
 
                 # Policy loss
                 pg_loss1 = -mb_advantages * ratio
+                assert torch.all(pg_loss1), "error pg_loss1"
                 pg_loss2 = -mb_advantages * torch.clamp(ratio, 1 - self.args.clip_coef, 1 + self.args.clip_coef)
+                assert pg_loss2 is not None, "error pg_loss2"
                 pg_loss = torch.max(pg_loss1, pg_loss2).mean()
-
                 # Value loss
                 newvalue = newvalue.view(-1)
                 if True: # toggles whether or not to use a clipped loss for the value function, as per the paper
@@ -187,13 +192,21 @@ class MAPPO:
                 else:
                     v_loss = 0.5 * ((newvalue - b_returns[mb_inds]) ** 2).mean()
 
-                entropy_loss = entropy.mean()
-                loss = pg_loss - self.args.ent_coef * entropy_loss + v_loss * self.args.vf_coef
+                # entropy_loss = entropy.mean()
+                # loss = pg_loss - self.args.ent_coef * entropy_loss + v_loss * self.args.vf_coef
+
+                self.actor_optimizer.zero_grad()
+
+                pg_loss.backward()
+                #torch.nn.utils.clip_grad_norm_(self.actor.parameters(), self.args.max_grad_norm)
+                self.actor_optimizer.step()
 
                 self.q_optimizer.zero_grad()
-                loss.backward()
-                nn.utils.clip_grad_norm_(agent.parameters(), args.max_grad_norm)
+                v_loss.backward()
+                #torch.nn.utils.clip_grad_norm_(self.critic.parameters(), self.args.max_grad_norm)
                 self.q_optimizer.step()
+
+
 
             if self.args.target_kl is not None and approx_kl > self.args.target_kl:
                 break

@@ -74,14 +74,13 @@ class Actor(nn.Module):
         normal = torch.distributions.Normal(mean, std)  #   Normal distribution
         x_t = normal.rsample()  # for reparameterization trick (mean + std * N(0,1)) 先对标准正态采样，再重新加上
         # x_t, y_t : tensor(256, 2)
-        y_t = torch.tanh(x_t)
-        action = y_t * self.action_scale + self.action_bias  # 实际上就是把action规范到min——max区间中
+        y_t = torch.tanh(x_t) # Enforcing Action Bound
+        action = y_t  # 实际上就是把action规范到min——max区间中
         log_prob = normal.log_prob(x_t) # x值对应的对数概率，因为normal代表了一个正态分布的概率密度函数
-        # Enforcing Action Bound ??
         log_prob -= torch.log(self.action_scale * (1 - y_t.pow(2)) + 1e-6)
         log_prob = log_prob.sum(1, keepdim=True)
         mean = torch.tanh(mean) * self.action_scale + self.action_bias
-        return action, log_prob, mean
+        return action.detach(), log_prob.detach(), mean
 
 
 class Q_net(nn.Module):

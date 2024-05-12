@@ -33,10 +33,12 @@ class Agent:
             pi = pi2
             pi = pi.squeeze(0)
             u = pi.cpu().numpy()
-            u = np.clip(u, np.float(-(self.args.high_action - self.args.low_action) / 2),
-                        np.float((self.args.high_action - self.args.low_action) / 2))
+            # u = np.clip(u, np.float(-(self.args.high_action - self.args.low_action) / 2),
+            #             np.float((self.args.high_action - self.args.low_action) / 2))
+            # u += np.int((self.args.high_action - self.args.low_action) / 2)
             # np.clip(a, a_min, a_max, out=None) 限制其值在amin，amax之间
-            u += np.int((self.args.high_action - self.args.low_action) / 2)
+            u = u * (self.args.high_action-self.args.low_action)/2 + (self.args.high_action+self.args.low_action)/2
+            u = np.clip(u, self.args.low_action, self.args.high_action)
             if self.algorithm == "MAPPO":
                 # inputs = torch.cat([inputs, global_info], dim=1)
                 # global_info = torch.tensor(global_info).unsqueeze(0)

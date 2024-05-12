@@ -8,23 +8,36 @@ import numpy as np
 # MAPPO 的 critic 网络是 以 联合观察作为输入， 输出单个Q值
 # 而 actor 网络是 输入单个的观察维度，输出动作和对数概率, 这里直接继承SAC网络的actor
 # define the actor network
+LOG_STD_MAX = 2
+LOG_STD_MIN = -5
 class Actor(nn.Module):
     def __init__(self, args, agent_id):
         super(Actor, self).__init__()
         self.action_shape = args.action_shape[agent_id]
         self.max_action = args.high_action
         self.min_action = args.low_action
+        self.action_var = torch.full((args.action_shape[agent_id],), 0.1*0.1)
         self.fc1 = nn.Linear(args.obs_shape[agent_id], 64)  # 18*64
         self.fc2 = nn.Linear(64, 64)  # Fully connected
         self.fc3 = nn.Linear(64, 64)
-        self.action_out = nn.Linear(64, self.action_shape)
+        self.fc_mean = nn.Linear(64, args.action_shape[agent_id])  # 均值输出层
+        self.register_buffer(
+            "action_scale",
+            torch.tensor((self.max_action - self.min_action) / 2.0, dtype=torch.float32)
+        )
+        self.register_buffer(
+            "action_bias", torch.tensor((self.max_action + self.min_action) / 2.0, dtype=torch.float32)
+        )
 
     def forward(self, x):
+        assert not torch.isnan(x).all(), "error x"
         x = F.relu(self.fc1(x))  # 一层层连接，一共三层
         x = F.relu(self.fc2(x))
-        x = F.relu(self.fc3(x))
-        actions = np.int((self.max_action - self.min_action) / 2) * torch.tanh(self.action_out(x))
-        return actions
+        x = F.tanh(x)
+
+        mean = self.fc_mean(x)
+
+        return mean
 
     def get_actions(self, x, actions=None):
         # mean, log_std = self(x)
@@ -44,21 +57,36 @@ class Actor(nn.Module):
         out_actions = []
         action_log_probs = []
         entropys = []
-        for i in range(self.action_shape):
-            logits = self(x)
-            probs = torch.distributions.Categorical(logits=logits)
-            action = probs.sample()
-            out_actions.append(action.float())
-            action_log_prob = probs.log_prob(action)
-            action_log_probs.append(action_log_prob)
-            entropys.append(probs.entropy())
-        if actions is None:
-            actions = torch.cat(out_actions, -1)
-            #log_prob = probs.log_prob(actions)
-        action_log_probs = torch.sum(torch.cat(action_log_probs, -1), -1, keepdim=True)
-        log_prob = action_log_probs
-        entropy = sum(entropys)
-        return actions, log_prob, entropy
+        mean = self(x)
+        cov_mat = torch.diag(self.action_var).unsqueeze(dim=0)
+
+        normal = torch.distributions.MultivariateNormal(mean, cov_mat)  # Normal distribution
+        entropy = sum(normal.entropy())
+        x_t = normal.sample()  # for reparameterization trick (mean + std * N(0,1)) 先对标准正态采样，再重新加上
+        # x_t, y_t : tensor(256, 2)
+        action = x_t
+        log_prob = normal.log_prob(x_t)  # x值对应的对数概率，因为normal代表了一个正态分布的概率密度函数
+        # log_prob -= torch.log(self.action_scale * (1 - y_t.pow(2)) + 1e-6)
+        # mean = torch.tanh(mean) * self.action_scale + self.action_bias
+        return action, log_prob, entropy
+        # mean, log_std = self(x)
+        # std = log_std.exp()
+        # normal = torch.distributions.Normal(mean, std)  # Normal distribution
+        # for i in range(self.action_shape):
+        #     logits = self(x)
+        #     probs = torch.distributions.Categorical(logits=logits)
+        #     action = probs.sample()
+        #     out_actions.append(action.float())
+        #     action_log_prob = probs.log_prob(action)
+        #     action_log_probs.append(action_log_prob)
+        #     entropys.append(probs.entropy())
+        # if actions is None:
+        #     actions = torch.cat(out_actions, -1)
+        #     #log_prob = probs.log_prob(actions)
+        # action_log_probs = torch.sum(torch.cat(action_log_probs, -1), -1, keepdim=True)
+        # log_prob = action_log_probs
+        # entropy = sum(entropys)
+        # return actions, log_prob, entropy
 
     # def evaluate_action(self, observation, action):
     #     """
