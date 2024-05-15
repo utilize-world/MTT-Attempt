@@ -1,14 +1,43 @@
 import torch
 import os
 from .actor_critic import Actor, Critic
+from
+class TdmNormalizer(object):
+    def __init__(
+            self,
+            env,
+            vectorized,
+            normalize_tau=False,
+            max_tau=0,
+            log_tau=False,
+                 ):
+        if normalize_tau:
+            assert max_tau > 0, "Max tau must be larger than 0 if normalizing"
+        self.observation_dim = env.observation_space.low.size
+        self.action_dim = env.action_space.low.size
+        self.goal_dim = env.goal_dim
+        self.obs_normalizer = TorchFixedNormalizer(self.observation_dim)
+        self.goal_normalizer = TorchFixedNormalizer(env.goal_dim)
+        self.action_normalizer = TorchFixedNormalizer(self.action_dim)
+        self.distance_normalizer = TorchFixedNormalizer(
+            env.goal_dim if vectorized else 1
+        )
+        self.log_tau = log_tau
+        self.normalize_tau = normalize_tau
+        self.max_tau = max_tau
 
 
-class MADDPG:
+class TDMs:
     def __init__(self, args, agent_id):  # 因为不同的agent的obs、act维度可能不一样，所以神经网络不同,需要agent_id来区分
+        """
+        need hypermeters:
+        max_tau:
+
+        """
         self.args = args
         self.agent_id = agent_id
         self.train_step = 0
-
+        self.tau
         # create the network
         self.actor_network = Actor(args, agent_id)
         self.critic_network = Critic(args)

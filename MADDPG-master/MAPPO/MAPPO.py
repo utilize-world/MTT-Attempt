@@ -10,13 +10,13 @@ class MAPPO:
         self.args = args
         self.train_step = 0
         self.device = torch.device("cuda" if torch.cuda.is_available() and args.cuda else "cpu")
-        self.policy = Actor(args, 0)
+
         # 创建单个policy_net,这里的0，就是代表第0个agent的actor，由于单个actor，
         # 在homogeneous情况下随机一个都行
         self.q_lr = 1e-3
         self.p_lr = 3e-4
         self.critic = Critic(args).to(self.device)
-        self.actor = Actor(args, 0).to(self.device)
+        self.policy = Actor(args, 0).to(self.device)
 
         #    以下是超参，还未加入arguments中
         # self.clip_param = args.clip_param
@@ -33,7 +33,9 @@ class MAPPO:
         # self.qf1_t.load_state_dict(self.qf1.state_dict())
         # self.qf2_t.load_state_dict(self.qf2.state_dict())
         self.q_optimizer = torch.optim.Adam((self.critic.parameters()), lr=self.q_lr)
-        self.actor_optimizer = torch.optim.Adam(list(self.actor.parameters()), lr=self.p_lr)
+        self.actor_optimizer = torch.optim.Adam((self.policy.parameters()), lr=self.p_lr)
+        self.optimizer = torch.optim.Adam(self.critic.parameters(), lr=self.q_lr)
+        self.optimizer.add_param_group({'params': self.policy.parameters(), 'lr': self.p_lr})
 
 
     # 先留着用来加载和存放model参数
@@ -118,7 +120,7 @@ class MAPPO:
             next_value = self.critic(next_obs.squeeze(1)).reshape(-1)    # 处理一下维度，从200*1*38变成200*38
             advantages = torch.zeros_like(rewards).to(self.device).reshape(-1)
             lastgaelam = 0
-            for t in reversed(range(self.args.max_episode_len)):
+            for t in reversed(range(time_steps-1)):
                 if t == self.args.max_episode_len - 1:
                     nextnonterminal = 1.0 - next_done[t]
                     nextvalues = next_value[t]
@@ -130,7 +132,7 @@ class MAPPO:
 
                 advantages[t] = lastgaelam = delta + self.args.gamma * self.args.gae_lambda * nextnonterminal * lastgaelam
 
-            assert 0 not in advantages.detach().numpy(), "0 in adv"
+
             returns = advantages + values.reshape(-1)
 
         # flatten
@@ -149,18 +151,24 @@ class MAPPO:
         #np.random.shuffle(b_inds)
         for epoch in range(self.args.update_epi):
             np.random.shuffle(b_inds)
-            min_size = int(time_steps/10) + 1
+            min_size = int(time_steps/10)+1
+            assert min_size < time_steps, print(f"interval > time_steps, {min_size} > {time_steps}")
             for start in range(0, time_steps, min_size):
-                end = start + min_size
+                if start + min_size >= time_steps:
+                    end = time_steps
+                else:
+                    end = start + min_size
                 mb_inds = b_inds[start:end]
-
+                if len(mb_inds) == 1:
+                    mb_inds = b_inds[end-min_size:end]
                 #_, newlogprob, entropy, newvalue = agent.get_action_and_value(obs[mb_inds], actions.long()[mb_inds])
 
-                _, newlogprob, entropy = self.actor.get_actions(b_obs[mb_inds], b_actions.long()[mb_inds])
+                _, newlogprob, entropy = self.policy.get_actions(b_obs[mb_inds], b_actions.long()[mb_inds])
                 newvalue = self.critic(b_obs_joint[mb_inds])
                 logratio = newlogprob - b_logprobs[mb_inds]
                 ratio = logratio.exp()
-                assert ratio is not None, "error ratio"
+                ratio_check = list(ratio)
+                assert (element < 100 for element in ratio_check), "error ratio"
                 with torch.no_grad():
                     # calculate approx_kl http://joschu.net/blog/kl-approx.html
                     old_approx_kl = (-logratio).mean()
@@ -168,15 +176,23 @@ class MAPPO:
                     clipfracs += [((ratio - 1.0).abs() > self.args.clip_coef).float().mean().item()]
 
                 mb_advantages = b_advantages[mb_inds]
-                if False:    # use normalized adv func
+                if True:    # use normalized adv func
                     mb_advantages = (mb_advantages - mb_advantages.mean()) / (mb_advantages.std() + 1e-8)
-
+                assert mb_advantages is not None, "Nan adv"
+                # if int(mb_advantages.std()) < 0:
+                #     print(mb_advantages.std())
+                #     assert(int(mb_advantages.std()) >= 0), "error std"
+                # print(mb_advantages)
+                # 加上会出现nan
                 # Policy loss
                 pg_loss1 = -mb_advantages * ratio
-                assert torch.all(pg_loss1), "error pg_loss1"
+
+                #assert torch.all(pg_loss1), "error pg_loss1"
                 pg_loss2 = -mb_advantages * torch.clamp(ratio, 1 - self.args.clip_coef, 1 + self.args.clip_coef)
-                assert pg_loss2 is not None, "error pg_loss2"
+                #assert pg_loss2 is not None, "error pg_loss2"
                 pg_loss = torch.max(pg_loss1, pg_loss2).mean()
+                if not pg_loss < 100:
+                    print("error loss")
                 # Value loss
                 newvalue = newvalue.view(-1)
                 if True: # toggles whether or not to use a clipped loss for the value function, as per the paper
@@ -192,19 +208,34 @@ class MAPPO:
                 else:
                     v_loss = 0.5 * ((newvalue - b_returns[mb_inds]) ** 2).mean()
 
-                # entropy_loss = entropy.mean()
-                # loss = pg_loss - self.args.ent_coef * entropy_loss + v_loss * self.args.vf_coef
+                entropy_loss = entropy.mean()
+                loss = pg_loss - self.args.ent_coef * entropy_loss + v_loss * self.args.vf_coef
+                self.optimizer.zero_grad()
 
-                self.actor_optimizer.zero_grad()
-
-                pg_loss.backward()
-                #torch.nn.utils.clip_grad_norm_(self.actor.parameters(), self.args.max_grad_norm)
-                self.actor_optimizer.step()
-
-                self.q_optimizer.zero_grad()
-                v_loss.backward()
-                #torch.nn.utils.clip_grad_norm_(self.critic.parameters(), self.args.max_grad_norm)
-                self.q_optimizer.step()
+                loss.backward()
+                a = list(self.policy.parameters())
+                for param in a:
+                    if param.grad is not None:
+                        print(f'Parameter:' )
+                        print(f'Gradient norm: {param.grad.norm().item()}')  # 输出梯度范数
+                        print(f'Gradient mean: {param.grad.mean().item()}')  # 输出梯度均值
+                        print(f'Gradient max: {param.grad.max().item()}')  # 输出梯度最大值
+                        print(f'Gradient min: {param.grad.min().item()}')  # 输出梯度最小值
+                        print('-----------------------')
+                    else:
+                        print(f'Parameter:  - Gradient not computed')
+                torch.nn.utils.clip_grad_norm_((list(self.policy.parameters()) + list(self.critic.parameters())), self.args.max_grad_norm)
+                self.optimizer.step()
+                # self.actor_optimizer.zero_grad()
+                #
+                # pg_loss.backward()
+                # #torch.nn.utils.clip_grad_norm_(self.actor.parameters(), self.args.max_grad_norm)
+                # self.actor_optimizer.step()
+                #
+                # self.q_optimizer.zero_grad()
+                # v_loss.backward()
+                # #torch.nn.utils.clip_grad_norm_(self.critic.parameters(), self.args.max_grad_norm)
+                # self.q_optimizer.step()
 
 
 

@@ -30,10 +30,11 @@ class Actor(nn.Module):
         )
 
     def forward(self, x):
-        assert not torch.isnan(x).all(), "error x"
+        assert not torch.isnan(x).any(), "error x"
         x = F.relu(self.fc1(x))  # 一层层连接，一共三层
         x = F.relu(self.fc2(x))
-        x = F.tanh(x)
+        x = F.relu(self.fc3(x))
+        x = torch.tanh(x)
 
         mean = self.fc_mean(x)
 
@@ -68,6 +69,7 @@ class Actor(nn.Module):
         log_prob = normal.log_prob(x_t)  # x值对应的对数概率，因为normal代表了一个正态分布的概率密度函数
         # log_prob -= torch.log(self.action_scale * (1 - y_t.pow(2)) + 1e-6)
         # mean = torch.tanh(mean) * self.action_scale + self.action_bias
+        action = ((self.max_action - self.min_action) / 2) * torch.tanh(action)
         return action, log_prob, entropy
         # mean, log_std = self(x)
         # std = log_std.exp()

@@ -4,13 +4,14 @@ from .actor_critic import Actor, Q_net
 import einops
 import torch.nn.functional as F
 
+#torch.autograd.set_detect_anomaly(True)
 
 class MASAC:
     def __init__(self, args):
         self.args = args
         self.train_step = 0
         self.device = torch.device("cuda" if torch.cuda.is_available() and args.cuda else "cpu")
-        self.policy = Actor(args, 0)
+        self.policy = Actor(args, 0).to(self.device)
         # 创建单个policy_net,这里的0，就是代表第0个agent的actor，由于单个actor，
         # 在homogeneous情况下随机一个都行
         self.q_lr = 1e-3
@@ -18,15 +19,15 @@ class MASAC:
         self.qf1 = Q_net(args).to(self.device)
         self.qf2 = Q_net(args).to(self.device)
 
-        self.qf1_t = Q_net(args)
-        self.qf2_t = Q_net(args)
+        self.qf1_t = Q_net(args).to(self.device)
+        self.qf2_t = Q_net(args).to(self.device)
 
         self.qf1_t.load_state_dict(self.qf1.state_dict())
         self.qf2_t.load_state_dict(self.qf2.state_dict())
         self.q_optimizer = torch.optim.Adam(list(self.qf1.parameters()) + list(self.qf2.parameters()), lr=self.q_lr)
 
         self.p_lr = 3e-4
-        self.actor = Actor(args, 0).to(self.device)
+
         # self.actor_t = Actor(args, agent_id)
         # self.alpha = args.alpha
         ## auto
@@ -36,7 +37,7 @@ class MASAC:
         self.a_optimizer = torch.optim.Adam([self.log_alpha], lr=self.q_lr)
 
         # self.actor_t.load_state_dict(self.actor.state_dict())
-        self.actor_optimizer = torch.optim.Adam(list(self.actor.parameters()), lr=self.p_lr)
+        self.actor_optimizer = torch.optim.Adam(self.policy.parameters(), lr=self.p_lr)
         # if args.autotune:  # 如果有自动更新alpha参数的步骤
         #     target_entropy = -torch.prod(torch.Tensor(args.action_shape.shape).to(self.device)).item()
         #     log_alpha = torch.zeros(1, requires_grad=True, device=self.device)
@@ -88,7 +89,7 @@ class MASAC:
 
             # u_next, next_state_log_pi = self.policy.get_actions(o_next)#报错，格式不对
             for i in range(self.args.n_agents):
-                u_next_i, next_state_log_i, _ = self.policy.get_actions(o_next[i])
+                u_next_i, next_state_log_i, _, _ = self.policy.get_actions(o_next[i])
                 # 256*2, 256*1
                 u_next.append(u_next_i)  # list2, tensor 256*2
                 next_state_log.append(next_state_log_i)  # list2,tensor 256*1
@@ -125,16 +126,29 @@ class MASAC:
         # qf_loss = (qf1_loss + qf2_loss)
         self.q_optimizer.zero_grad()
         qf_loss.backward()
+
+        # for param in self.qf1.parameters():
+        #     if param.grad is not None:
+        #         print(f'Critic Parameter:')
+        #         print(f'Gradient norm: {param.grad.norm().item()}')  # 输出梯度范数
+        #         print(f'Gradient mean: {param.grad.mean().item()}')  # 输出梯度均值
+        #         print(f'Gradient max: {param.grad.max().item()}')  # 输出梯度最大值
+        #         print(f'Gradient min: {param.grad.min().item()}')  # 输出梯度最小值
+        #         print('-----------------------')
+        #     else:
+        #         print(f'Parameter:  - Gradient not computed')
         self.q_optimizer.step()
+
         self.train_step += 1
         # actor update,之前的数据都是在联合角度来看，actor的更新是对于每个agent本身的本地观察生效，而且遵循TD3的延迟更新
         # if self.train_step > 0 and self.train_step % self.args.save_rate == 0:
-        if self.train_step > 0 and self.train_step % 1 == 0:
+        if self.train_step > 0:
+
             # 如果确认更新
             u_pi = []
             state_log_pi = []
             for i in range(self.args.n_agents):
-                u_pi_i, state_log_pi_i, _ = self.policy.get_actions(o[i])
+                u_pi_i, state_log_pi_i, mean, logstd = self.policy.get_actions(o[i])
                 u_pi.append(u_pi_i)
                 state_log_pi.append(state_log_pi_i)
             log_pi = einops.reduce(
@@ -142,29 +156,46 @@ class MASAC:
             )
             qf1_pi = self.qf1(o, u_pi)
             qf2_pi = self.qf2(o, u_pi)
-            min_qf_pi = torch.min(qf1_pi, qf2_pi).view(-1)
-            actor_loss = (((self.alpha * log_pi) - min_qf_pi).mean())
+            # qf1_pi = self.qf1(o, state_log_pi_i)
+            # qf2_pi = self.qf2(o, u_pi_i)
+            min_qf_pi = torch.min(qf1_pi, qf2_pi)
+            # TODO the grad of actor is not None
+            actor_loss = ((self.alpha * log_pi) - min_qf_pi).mean()
+
+            #actor_loss = torch.mean(state_log_pi_i)
 
             self.actor_optimizer.zero_grad()
             actor_loss.backward()
+
+            # for param in self.policy.parameters():
+            #     if param.grad is None:
+            #         print(f'Parameter actor:  - Gradient not computed')
+            #
+            #     else:
+            #         print(f'Parameter ac:')
+            #         print(f'Gradient norm: {param.grad.norm().item()}')  # 输出梯度范数
+            #         print(f'Gradient mean: {param.grad.mean().item()}')  # 输出梯度均值
+            #         print(f'Gradient max: {param.grad.max().item()}')  # 输出梯度最大值
+            #         print(f'Gradient min: {param.grad.min().item()}')  # 输出梯度最小值
+            #         print('-----------------------')
             self.actor_optimizer.step()
 
             ## autotuned alpha
             with torch.no_grad():
                 for i in range(self.args.n_agents):
-                    u_pi_i, state_log_pi_i, _ = self.policy.get_actions(o[i])
+                    u_pi_i, state_log_pi_i, _, _ = self.policy.get_actions(o[i])
                     u_pi.append(u_pi_i)
                     state_log_pi.append(state_log_pi_i)
                 log_pi = einops.reduce(
                     state_log_pi, "c b a -> b a", "sum"
                 )
-            alpha_loss = (-self.log_alpha * (log_pi + self.target_entropy).detach()).mean()
+            alpha_loss = (-self.log_alpha * (log_pi + self.target_entropy)).mean()
 
             self.a_optimizer.zero_grad()
             alpha_loss.backward()
             self.a_optimizer.step()
             self.alpha = self.log_alpha.exp().item()
-            ###
+
         self._soft_update_target_network()
 
         if self.train_step > 0 and self.train_step % self.args.save_rate == 0:

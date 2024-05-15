@@ -10,13 +10,13 @@ import numpy as np
 # define the actor network
 
 LOG_STD_MAX = 2
-LOG_STD_MIN = -5
+LOG_STD_MIN = -20
 
 class Actor(nn.Module):
     """
        actor网络的输入为每个agent的观察维度，输出为均值与对数标准差，
        """
-    def __init__(self, args, agent_id):
+    def __init__(self, args, agent_id, init_w=3e-3):
         super(Actor, self).__init__()
         self.max_action = args.high_action
         self.min_action = args.low_action
@@ -26,6 +26,13 @@ class Actor(nn.Module):
         self.fc3 = nn.Linear(64, 64)
         self.fc_logstd = nn.Linear(64, args.action_shape[agent_id])    #
         self.fc_mean = nn.Linear(64, args.action_shape[agent_id])   # 均值输出层
+
+        # self.fc_mean.weight.data.uniform_(-init_w, init_w)
+        # self.fc_mean.bias.data.uniform_(-init_w, init_w)
+        # self.fc_logstd.weight.data.uniform_(-init_w, init_w)
+        # self.fc_logstd.bias.data.uniform_(-init_w, init_w)
+
+
 
         self.register_buffer(
             "action_scale",
@@ -58,33 +65,45 @@ class Actor(nn.Module):
     def forward(self, x):
         x = F.relu(self.fc1(x))     # 一层层连接，一共三层
         x = F.relu(self.fc2(x))
-
-        log_std = self.fc_logstd(x)
+        x = F.relu(self.fc3(x))
         # log_std: tensor(256,2)
-        log_std = torch.tanh(log_std)
+        log_std = self.fc_logstd(x)
         mean = self.fc_mean(x)
-        # mean: tensor(256,2)
-        log_std = LOG_STD_MIN + 0.5 * (LOG_STD_MAX - LOG_STD_MIN) * (log_std + 1)  # From SpinUp / Denis Yarats
 
+        # mean: tensor(256,2)
+        log_std = torch.clamp(log_std, LOG_STD_MIN, LOG_STD_MAX)
         return mean, log_std
 
     def get_actions(self, x):
-        mean, log_std = self(x)
+        mean, log_std = self.forward(x)
+
         std = log_std.exp()
         normal = torch.distributions.Normal(mean, std)  #   Normal distribution
+        # normal = torch.distributions.Normal(0, 1)
+        # ########
+        # z = normal.sample(mean.shape)
+        # action_0 = torch.tanh(mean + std*z)
+        # action = ((self.max_action - self.min_action) / 2) * action_0
+        # log_prob = normal.log_prob(mean + std * z) - torch.log(
+        #     1. - action_0.pow(2) + 1e-6) - np.log(self.max_action - self.min_action)
+        # log_prob = log_prob.sum(dim=1, keepdim=True)
+        #######
         x_t = normal.rsample()  # for reparameterization trick (mean + std * N(0,1)) 先对标准正态采样，再重新加上
         # x_t, y_t : tensor(256, 2)
         y_t = torch.tanh(x_t) # Enforcing Action Bound
-        action = y_t  # 实际上就是把action规范到min——max区间中
         log_prob = normal.log_prob(x_t) # x值对应的对数概率，因为normal代表了一个正态分布的概率密度函数
         log_prob -= torch.log(self.action_scale * (1 - y_t.pow(2)) + 1e-6)
+        # log_prob = log_prob - torch.log((1 - y_t.pow(2)) + 1e-6)
         log_prob = log_prob.sum(1, keepdim=True)
-        mean = torch.tanh(mean) * self.action_scale + self.action_bias
-        return action.detach(), log_prob.detach(), mean
+        #mean = torch.tanh(mean) * self.action_scale + self.action_bias
+        action = ((self.max_action - self.min_action) / 2) * torch.tanh(x_t)
+        return action, log_prob, mean, log_std
 
+    def just_get_action(self, state, deterministic):
+        pass
 
 class Q_net(nn.Module):
-    def __init__(self, args):
+    def __init__(self, args, init_w=3e-3):
         super(Q_net, self).__init__()
         self.max_action = args.high_action
         self.fc1 = nn.Linear(sum(args.obs_shape) + sum(args.action_shape), 64)  # 输入维度是观测维度和动作维度的和,也就是联合动作和联合状态
@@ -93,6 +112,9 @@ class Q_net(nn.Module):
         self.fc2 = nn.Linear(64, 64)
         self.fc3 = nn.Linear(64, 64)
         self.q_out = nn.Linear(64, 1)
+
+        self.q_out.weight.data.uniform_(-init_w, init_w)
+        self.q_out.bias.data.uniform_(-init_w, init_w)
         # 输出的是Q
 
     def forward(self, state, action):

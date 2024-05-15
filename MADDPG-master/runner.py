@@ -94,7 +94,7 @@ class Runner:
             # begin_debug(time_step % 70000 == 0 and time_step > 0)
 
             # if (current_time_step % self.episode_limit == 0) or not (False in done) or critical_done:
-            if (current_time_step % self.episode_limit == 0) or critical_done :
+            if (current_time_step % self.episode_limit == 0) or critical_done:
                 s = self.env.reset()
 
                 if self.algorithm == "MAPPO":
@@ -152,7 +152,7 @@ class Runner:
                     next_obs[agent][current_time_step] = torch.tensor(s_next[agent], dtype=torch.float32)
 
                     rewards_mappo_timestep[agent][current_time_step] = r[agent]
-
+                s = s_next
             if self.algorithm == "MADDPG" or self.algorithm == "MASAC":
                 self.buffer.store_episode(s[:self.args.n_agents], u, r[:self.args.n_agents],
                                           s_next[:self.args.n_agents])
@@ -165,16 +165,20 @@ class Runner:
                     for i, agent in enumerate(self.agents):
                         other_agents = self.agents.copy()
                         other_agents.remove(agent)
-                        #agent.learn(transitions, other_agents, self.algorithm)
+                        # agent.learn(transitions, other_agents, self.algorithm)
                         agent.learn(trans[i], other_agents, self.algorithm)
-            elif self.algorithm == "MAPPO" and current_time_step % self.episode_limit == 0 and time_step > self.args.max_episode_len * self.args.update_epi \
-                    or not (False in done):
+            elif self.algorithm == "MAPPO":
+                if (current_time_step > 0 and current_time_step % self.episode_limit == 0) or critical_done:
 
-                for i, agent in enumerate(self.agents):
-                    agent.learn(transitions=None, other_agents=None, algorithm="MAPPO", obs=obs_joint,
-                                next_obs=next_obs, values=value[i],
-                                dones=dones[i], actions=u_joint[i], logprobs=logprobs[i],
-                                rewards=rewards_mappo_timestep[i], nextdone=nextdone[i], time_steps=current_time_step)
+                    for i, agent in enumerate(self.agents):
+                        agent.learn(transitions=None, other_agents=None, algorithm="MAPPO",
+                                    obs=obs_joint[:, :current_time_step, :, :],
+                                    next_obs=next_obs[:, :current_time_step, :, :],
+                                    values=value[i, :current_time_step, :],
+                                    dones=dones[i, :current_time_step, :], actions=u_joint[i, :current_time_step, :, :],
+                                    logprobs=logprobs[i, :current_time_step, :],
+                                    rewards=rewards_mappo_timestep[i, :current_time_step, :],
+                                    nextdone=nextdone[i, :current_time_step, :], time_steps=current_time_step)
             current_time_step += 1
 
             if time_step > 0 and time_step % self.args.evaluate_rate == 0:
