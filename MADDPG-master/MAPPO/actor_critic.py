@@ -9,7 +9,7 @@ import numpy as np
 # 而 actor 网络是 输入单个的观察维度，输出动作和对数概率, 这里直接继承SAC网络的actor
 # define the actor network
 LOG_STD_MAX = 2
-LOG_STD_MIN = -5
+LOG_STD_MIN = -20
 class Actor(nn.Module):
     def __init__(self, args, agent_id):
         super(Actor, self).__init__()
@@ -21,6 +21,8 @@ class Actor(nn.Module):
         self.fc2 = nn.Linear(64, 64)  # Fully connected
         self.fc3 = nn.Linear(64, 64)
         self.fc_mean = nn.Linear(64, args.action_shape[agent_id])  # 均值输出层
+        self.fc_logstd = nn.Linear(64, args.action_shape[agent_id])  #
+
         self.register_buffer(
             "action_scale",
             torch.tensor((self.max_action - self.min_action) / 2.0, dtype=torch.float32)
@@ -34,16 +36,18 @@ class Actor(nn.Module):
         x = F.relu(self.fc1(x))  # 一层层连接，一共三层
         x = F.relu(self.fc2(x))
         x = F.relu(self.fc3(x))
-        x = torch.tanh(x)
-
+        log_std = self.fc_logstd(x)
         mean = self.fc_mean(x)
 
-        return mean
+        # mean: tensor(256,2)
+        log_std = torch.clamp(log_std, LOG_STD_MIN, LOG_STD_MAX)
+
+        return mean, log_std
 
     def get_actions(self, x, actions=None):
-        # mean, log_std = self(x)
-        # std = log_std.exp()
-        # normal = torch.distributions.Normal(mean, std)  # Normal distribution
+        mean, log_std = self(x)
+        std = log_std.exp()
+        normal = torch.distributions.Normal(mean, std)  # Normal distribution
         # x_t = normal.rsample()  # for reparameterization trick (mean + std * N(0,1)) 先对标准正态采样，再重新加上
         # # x_t, y_t : tensor(256, 2)
         # y_t = torch.tanh(x_t)
@@ -58,16 +62,17 @@ class Actor(nn.Module):
         out_actions = []
         action_log_probs = []
         entropys = []
-        mean = self(x)
-        cov_mat = torch.diag(self.action_var).unsqueeze(dim=0)
-
-        normal = torch.distributions.MultivariateNormal(mean, cov_mat)  # Normal distribution
+        # mean = self(x)
+        # cov_mat = torch.diag(self.action_var).unsqueeze(dim=0)
+        #
+        # normal = torch.distributions.MultivariateNormal(mean, cov_mat)  # Normal distribution
         entropy = sum(normal.entropy())
-        x_t = normal.sample()  # for reparameterization trick (mean + std * N(0,1)) 先对标准正态采样，再重新加上
+        x_t = normal.rsample()  # for reparameterization trick (mean + std * N(0,1)) 先对标准正态采样，再重新加上
         # x_t, y_t : tensor(256, 2)
         action = x_t
         log_prob = normal.log_prob(x_t)  # x值对应的对数概率，因为normal代表了一个正态分布的概率密度函数
-        # log_prob -= torch.log(self.action_scale * (1 - y_t.pow(2)) + 1e-6)
+        log_prob -= torch.log(self.action_scale * (1 - torch.tanh(action).pow(2)) + 1e-6)
+        log_prob = log_prob.sum(1, keepdim=True)
         # mean = torch.tanh(mean) * self.action_scale + self.action_bias
         action = ((self.max_action - self.min_action) / 2) * torch.tanh(action)
         return action, log_prob, entropy

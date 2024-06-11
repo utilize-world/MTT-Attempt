@@ -34,7 +34,7 @@ def get_args():
     parser.add_argument("--centralized-input", type=bool, default=True, help="if true, the MAPPO will use centralized critic")
     parser.add_argument("--gae_lambda", type=float, default=0.95,
                         help="gae factor")
-    parser.add_argument("--update-epi", type=int, default=10, help="update times each ")
+    parser.add_argument("--update-epi", type=int, default=80, help="update times each ")
     parser.add_argument("--clip-coef", type=float, default=0.2, help="clip para")
     parser.add_argument("--ent-coef", type=float, default=0.01, help="coefficient of the entropy")
     parser.add_argument("--vf-coef", type=float, default=0.5, help="coefficient of the value function")

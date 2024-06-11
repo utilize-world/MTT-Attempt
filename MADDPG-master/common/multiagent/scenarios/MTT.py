@@ -16,7 +16,7 @@ class Scenario(BaseScenario):
         world.bound = 1  # 尝试改变world的规模
         # set any world properties first
         # world.dim_c = 2     # 通信维度在这里也能定义，之前在core中已经定义过为3*agent的个数，这里将其注释掉
-        num_uav = 1  # 就是UAVs个数
+        num_uav = 2  # 就是UAVs个数
         num_target = 1  # 这个是target个数
 
         num_landmarks = 0  # 没有阻挡物
@@ -193,7 +193,7 @@ class Scenario(BaseScenario):
         if dis_reward < -1:
             print("abnormal reward")
 
-        dis_reward = - min_dis
+        dis_reward = -min(min_dis, 1)
         # dis_reward = float((agent.obs_range - min_dis)) / (min_dis + agent.obs_range * 0.25)  # 修改奖励
         # dis_reward = math.exp(agent.obs_range - min_dis)
 

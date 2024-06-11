@@ -34,8 +34,8 @@ class MAPPO:
         # self.qf2_t.load_state_dict(self.qf2.state_dict())
         self.q_optimizer = torch.optim.Adam((self.critic.parameters()), lr=self.q_lr)
         self.actor_optimizer = torch.optim.Adam((self.policy.parameters()), lr=self.p_lr)
-        self.optimizer = torch.optim.Adam(self.critic.parameters(), lr=self.q_lr)
-        self.optimizer.add_param_group({'params': self.policy.parameters(), 'lr': self.p_lr})
+        self.optimizer = torch.optim.Adam(list(self.critic.parameters())+ list(self.policy.parameters()), lr=self.q_lr)
+
 
 
     # 先留着用来加载和存放model参数
@@ -112,6 +112,9 @@ class MAPPO:
         b_inds, agent_id, time_steps
         分别是
         """
+        update_epi = self.args.update_epi
+        if time_steps < 200:
+            update_epi /= 10
         rewards = torch.tensor(rewards).to(self.device)
         next_obs, next_done = torch.Tensor(next_obs).to(self.device), torch.Tensor(nextdone).to(self.device)
         next_obs = [i for i in next_obs]
@@ -151,8 +154,9 @@ class MAPPO:
         #np.random.shuffle(b_inds)
         for epoch in range(self.args.update_epi):
             np.random.shuffle(b_inds)
+            assert time_steps > 0, "time_steps = 0 !!!!!!!! error"
             min_size = int(time_steps/10)+1
-            assert min_size < time_steps, print(f"interval > time_steps, {min_size} > {time_steps}")
+            assert min_size <= time_steps, print(f"interval > time_steps", {min_size} > {time_steps})
             for start in range(0, time_steps, min_size):
                 if start + min_size >= time_steps:
                     end = time_steps
@@ -207,35 +211,35 @@ class MAPPO:
                     v_loss = 0.5 * v_loss_max.mean()
                 else:
                     v_loss = 0.5 * ((newvalue - b_returns[mb_inds]) ** 2).mean()
-
-                entropy_loss = entropy.mean()
-                loss = pg_loss - self.args.ent_coef * entropy_loss + v_loss * self.args.vf_coef
-                self.optimizer.zero_grad()
-
-                loss.backward()
-                a = list(self.policy.parameters())
-                for param in a:
-                    if param.grad is not None:
-                        print(f'Parameter:' )
-                        print(f'Gradient norm: {param.grad.norm().item()}')  # 输出梯度范数
-                        print(f'Gradient mean: {param.grad.mean().item()}')  # 输出梯度均值
-                        print(f'Gradient max: {param.grad.max().item()}')  # 输出梯度最大值
-                        print(f'Gradient min: {param.grad.min().item()}')  # 输出梯度最小值
-                        print('-----------------------')
-                    else:
-                        print(f'Parameter:  - Gradient not computed')
-                torch.nn.utils.clip_grad_norm_((list(self.policy.parameters()) + list(self.critic.parameters())), self.args.max_grad_norm)
-                self.optimizer.step()
-                # self.actor_optimizer.zero_grad()
+                #########
+                # entropy_loss = entropy.mean()
+                # loss = pg_loss - self.args.ent_coef * entropy_loss + v_loss * self.args.vf_coef
+                # self.optimizer.zero_grad()
                 #
-                # pg_loss.backward()
-                # #torch.nn.utils.clip_grad_norm_(self.actor.parameters(), self.args.max_grad_norm)
-                # self.actor_optimizer.step()
-                #
-                # self.q_optimizer.zero_grad()
-                # v_loss.backward()
-                # #torch.nn.utils.clip_grad_norm_(self.critic.parameters(), self.args.max_grad_norm)
-                # self.q_optimizer.step()
+                # loss.backward()
+                # # a = list(self.policy.parameters())
+                # # for param in a:
+                # #     if param.grad is not None:
+                # #         print(f'Parameter:' )
+                # #         print(f'Gradient norm: {param.grad.norm().item()}')  # 输出梯度范数
+                # #         print(f'Gradient mean: {param.grad.mean().item()}')  # 输出梯度均值
+                # #         print(f'Gradient max: {param.grad.max().item()}')  # 输出梯度最大值
+                # #         print(f'Gradient min: {param.grad.min().item()}')  # 输出梯度最小值
+                # #         print('-----------------------')
+                # #     else:
+                # #         print(f'Parameter:  - Gradient not computed')
+                # torch.nn.utils.clip_grad_norm_((list(self.policy.parameters()) + list(self.critic.parameters())), self.args.max_grad_norm)
+                # self.optimizer.step()
+                self.actor_optimizer.zero_grad()
+
+                pg_loss.backward()
+                torch.nn.utils.clip_grad_norm_(self.policy.parameters(), self.args.max_grad_norm)
+                self.actor_optimizer.step()
+
+                self.q_optimizer.zero_grad()
+                v_loss.backward()
+                torch.nn.utils.clip_grad_norm_(self.critic.parameters(), self.args.max_grad_norm)
+                self.q_optimizer.step()
 
 
 
