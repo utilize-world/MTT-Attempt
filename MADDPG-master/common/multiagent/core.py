@@ -4,6 +4,7 @@ import math
 import numpy.random
 from utils import begin_debug
 from utils import find_index
+from utils import randomWalk
 
 
 # physical/external base state of all entites
@@ -47,7 +48,6 @@ class Action(object):
         # communication action 是否进行通信，即在最大通信范围内时可以通信
         self.c = None
         #
-
 
 
 # properties and state of physical world entity
@@ -158,7 +158,7 @@ class target_UAVs(Agent):
         self.action = None
         self.silent = True  # 不能通信，不能决策
         self.be_observed = False  # 定义了自己的状态，是否被观察到
-        self.out = False    # 定义是否出界
+        self.out = False  # 定义是否出界
 
 
 # multi-agent world
@@ -215,6 +215,8 @@ class World(object):  # 最关键的
         self.Na = 20
         # 定义是否在训练，这与状态有关
         self.train = True
+
+        self.update_time = 0  # 用于target更新计时
 
     # return all entities in the world
     @property
@@ -285,8 +287,18 @@ class World(object):  # 最关键的
             target.state.p_pos[1] += target.state.p_vel * math.sin(target.state.move_angle *
                                                                    (math.pi / 180)) * self.dt
 
+            # 随机游动，这里是固定时间间隔就会变化一次9
+            # TODO:target moving policy
+            if self.update_time % 20 == 0 and self.update_time > 0:
+                target.state.p_vel, target.state.move_angle = randomWalk(target.state.p_vel,
+                                                                         target.state.move_angle,
+                                                                         0.02,
+                                                                         90
+                                                                         )
+                self.update_time = 0
+            else:
+                self.update_time += 1
 
-            # # 随机游动，这里取得是
             # if not target.out:    # 如果没出界
             #     target.state.move_angle += numpy.random.uniform(-180, 180) / 8  # 每步最大变化±π/8
             # target.state.p_pos[0] += target.state.p_vel * math.cos(target.state.move_angle *
@@ -304,7 +316,8 @@ class World(object):  # 最关键的
             # 对agent也就是无人机进行更新，位置，角度和
         for i, agent in enumerate(self.agents):
             agent.state.move_angle += np.float((2 * agent.action.u[0] - self.Na - 1)) / (self.Na - 1) * 0.02 * self.dt
-            agent.state.p_vel += np.float((2 * agent.action.u[1] - self.Na - 1)) / (self.Na - 1) * 0.02 * self.dt  # 最大加速度为±5
+            agent.state.p_vel += np.float((2 * agent.action.u[1] - self.Na - 1)) / (
+                        self.Na - 1) * 0.02 * self.dt  # 最大加速度为±5
             # agent.state.move_angle += agent.action.u[0] * self.dt     # directly apply the u to velocity control
             # agent.state.p_vel += agent.action.u[1] * self.dt
 
@@ -332,6 +345,8 @@ class World(object):  # 最关键的
                 # 判断其余的agent是否在通信范围内
                 # 更新通信表
                 self.comm_map = self.update_comm_map(self.distance_cal_agent())
+                # if np.any(self.comm_map == 1):
+                #     print("comm detected")
                 #### test_code
                 # begin_debug(True in self.comm_map)
 
@@ -423,7 +438,7 @@ class World(object):  # 最关键的
                                        np.square(agent.state.p_pos[1] - target.state.p_pos[1]))
                 dm.append(distance_a_t)
                 if distance_a_t <= agent.obs_range:
-                # if distance_a_t < agent.obs_range and target.be_observed == False:
+                    # if distance_a_t < agent.obs_range and target.be_observed == False:
                     agent.obs_flag = True
                     # target.be_observed = True
                 else:

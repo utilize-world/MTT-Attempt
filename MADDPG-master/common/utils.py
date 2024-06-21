@@ -1,8 +1,8 @@
 import numpy as np
 import inspect
 import functools
-
-
+import matplotlib.pyplot as plt
+import random
 def store_args(method):
     """Stores provided method args as instance attributes.
     """
@@ -119,3 +119,17 @@ def begin_debug(condition):
     import pdb
     if condition:
         pdb.set_trace()
+
+def ezDrawAPic(saved_path, saved_name, x_label, y_label, x_data, y_data):
+    plt.figure()
+    plt.plot(range(len(x_data)), y_data)
+    plt.xlabel(x_label)
+    plt.ylabel(y_label)
+    plt.title(saved_name)
+    plt.savefig(saved_path + saved_name + '.png', format='png')
+    plt.close()
+
+def randomWalk(origin_x, origin_y, x_delta_max, y_delta_max):
+    delta_X = random.uniform(-x_delta_max, x_delta_max)
+    delta_Y = random.uniform(-y_delta_max, y_delta_max)
+    return origin_x + delta_X, origin_y + delta_Y

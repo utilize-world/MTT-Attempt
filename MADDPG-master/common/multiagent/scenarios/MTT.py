@@ -12,7 +12,7 @@ class Scenario(BaseScenario):
         :return: world
         """
         world = World()
-        world.comm_range = 0.2
+        world.comm_range = 0.4
         world.bound = 1  # 尝试改变world的规模
         # set any world properties first
         # world.dim_c = 2     # 通信维度在这里也能定义，之前在core中已经定义过为3*agent的个数，这里将其注释掉
@@ -233,7 +233,8 @@ class Scenario(BaseScenario):
         distance_uavs_map = world.distance_cal_agent()  # 这样做每次都要调用一次全局的表，实在是有点浪费，但是懒得改了
         for distance in distance_uavs_map[agent_index]:
             if 0 < distance <= agent.safe_range:
-                safe_reward += np.float((distance - agent.safe_range)) / np.float(agent.safe_range) - 0.3
+                #safe_reward += np.float((distance - agent.safe_range)) / np.float(agent.safe_range) - 0.3
+                safe_reward += -0.06
         #   三种奖励加起来就是每个agent的奖励
         reward = dis_reward + safe_reward + bound_reward
 
@@ -244,12 +245,12 @@ class Scenario(BaseScenario):
         #     print('negative reward')
         # 打印提示信息
         #####
-        # if safe_reward < 0:
-        #     print("not safe detected, agent:", agent_index, 'value:', safe_reward)
+        if safe_reward < 0:
+            print("not safe detected, agent:", agent_index, 'value:', safe_reward)
         # if bound_reward < 0:
         #     print("out of boundary, agent:", agent_index, 'value', bound_reward)
         ###############
-        return dis_reward
+        return dis_reward + safe_reward
 
     # 以下是对手的奖励，这里也没用
     # def adversary_reward(self, agent, world):
@@ -303,7 +304,7 @@ class Scenario(BaseScenario):
         vel = agent.state.p_vel # 1
         #obs = np.hstack((agent_p, agent.state.move_angle, target_p, agent.state.target_angle))
         obs = np.hstack((agent_p, vel, agent.state.move_angle, target_p))
-        obs_cat_com = np.hstack((agent_p, vel, agent.state.move_angle, target_p, agent.state.target_angle, comm))
+        obs_cat_com = np.hstack((agent_p, vel, agent.state.move_angle, target_p, comm))
         # 18
         # 这里先不考虑通信
         # return np.hstack((agent_p, agent.state.move_angle, target_p, agent.state.target_angle, comm))

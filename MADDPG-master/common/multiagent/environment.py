@@ -35,7 +35,8 @@ class MultiAgentEnv(gym.Env):
         # if true, even the action is continuous, action will be performed discretely
         self.force_discrete_action = world.discrete_action if hasattr(world, 'discrete_action') else False
         # if true, every agent has the same reward
-        self.shared_reward = world.competitive if hasattr(world, 'competitive') else False  # 这一项没用
+        #self.shared_reward = world.competitive if hasattr(world, 'competitive') else False  # 这一项没用
+        self.shared_reward = True
         self.time = 0
 
         # configure spaces
@@ -115,7 +116,6 @@ class MultiAgentEnv(gym.Env):
         # all agents get total reward in cooperative case
         # 奖励改为平均
         reward = float(np.sum(reward_n)) / float(len(self.agents))
-        self.shared_reward = True
         if self.shared_reward:
             reward_n = [reward] * self.n  # [1,2,3] * 3 = [[1,2,3],[1,2,3],[1,2,3]]
 

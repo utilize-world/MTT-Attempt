@@ -44,7 +44,7 @@ class Runner:
         agents = []
         if algorithms == "MADDPG":
             for i in range(self.args.n_agents):
-                policy = MADDPG(self.args, i)
+                policy = MADDPG(self.args, i, self.number)
                 agent = Agent(i, self.args, policy, algorithms)
                 agents.append(agent)
         elif algorithms == "MASAC":
@@ -95,6 +95,8 @@ class Runner:
 
             # if (current_time_step % self.episode_limit == 0) or not (False in done) or critical_done:
             if (current_time_step % self.episode_limit == 0) or critical_done:
+                # 这里就是一个episode结束的位置
+                # TODO: epi data processing
                 s = self.env.reset()
 
                 if self.algorithm == "MAPPO":
@@ -130,15 +132,20 @@ class Runner:
             # 以下一步其实是补全维度，但是在MTT中没有这样一个需要，因为控制的只有agent而没有target
             # for i in range(self.args.n_agents, self.args.n_players):
             #     actions.append([0, np.random.rand() * 2 - 1, 0, np.random.rand() * 2 - 1, 0])
+            if self.algorithm == "MADDPG":
+                self.env.shared_reward = False  # 这一步是让每个agent根据自己的奖励训练自己
             s_next, r, done, info = self.env.step(actions)
+
+
+
             # 这地方新加的，如果全部出界，则结束当前episode，并给予惩罚
             critical_done = check_agent_bound(self.env.world.agents, self.env.world.bound, 0)
             done_list.append(done)
-            if check_agent_near_bound(self.env.world.agents, self.env.world.bound, 0):
-                r = [x - 1 for x in r]
-            if critical_done:
-                # 如果全出界了，直接每人-100
-                r = [x - 10 for x in r]
+            # if check_agent_near_bound(self.env.world.agents, self.env.world.bound, 0):
+            #     r = [x - 1 for x in r]
+            # if critical_done:
+            #     # 如果全出界了，直接每人-100
+            #     r = [x - 10 for x in r]
             ################### 单个的时候就不考虑这个奖励了
             if not (False in done):
                 r = [x + 5 for x in r]

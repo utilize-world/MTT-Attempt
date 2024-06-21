@@ -4,18 +4,19 @@ from .actor_critic import Actor, Critic
 
 
 class MADDPG:
-    def __init__(self, args, agent_id):  # 因为不同的agent的obs、act维度可能不一样，所以神经网络不同,需要agent_id来区分
+    def __init__(self, args, agent_id, iterations):  # 因为不同的agent的obs、act维度可能不一样，所以神经网络不同,需要agent_id来区分
         self.args = args
         self.agent_id = agent_id
         self.train_step = 0
-
+        self.device = torch.device("cuda" if torch.cuda.is_available() and args.cuda else "cpu")
+        self.iterations = iterations  # 代表第几次训练任务
         # create the network
-        self.actor_network = Actor(args, agent_id)
-        self.critic_network = Critic(args)
-
+        self.actor_network = Actor(args, agent_id).to(self.device)
+        self.critic_network = Critic(args).to(self.device)
+        self.evaluate = self.args.evaluate
         # build up the target network
-        self.actor_target_network = Actor(args, agent_id)
-        self.critic_target_network = Critic(args)
+        self.actor_target_network = Actor(args, agent_id).to(self.device).to(self.device)
+        self.critic_target_network = Critic(args).to(self.device)
 
         # load the weights into the target networks
         self.actor_target_network.load_state_dict(self.actor_network.state_dict())
@@ -38,9 +39,11 @@ class MADDPG:
 
         # 加载模型
 
-        if os.path.exists(self.model_path + '/_actor_params.pkl') and self.args.evaluate == True:
-            self.actor_network.load_state_dict(torch.load(self.model_path + '/_actor_params.pkl'))
-            self.critic_network.load_state_dict(torch.load(self.model_path + '/_critic_params.pkl'))
+        if os.path.exists(self.model_path + '/_actor_params.pkl') and self.evaluate == True:
+            self.actor_network.load_state_dict(
+                torch.load(self.model_path + '/' + self.iterations + '_actor_params.pkl'))
+            self.critic_network.load_state_dict(
+                torch.load(self.model_path + '/' + self.iterations + '_critic_params.pkl'))
             print('Agent {} successfully loaded actor_network: {}'.format(self.agent_id,
                                                                           self.model_path + '/_actor_params.pkl'))
             print('Agent {} successfully loaded critic_network: {}'.format(self.agent_id,
@@ -67,7 +70,6 @@ class MADDPG:
 
         # calculate the target Q value function
         u_next = []
-
 
         with torch.no_grad():
             # 得到下一个状态对应的动作
@@ -104,10 +106,11 @@ class MADDPG:
 
         self._soft_update_target_network()
         if self.train_step > 0 and self.train_step % self.args.save_rate == 0:
-            self.save_model(self.train_step)
+            self.save_model(self.train_step, self.iterations)
         self.train_step += 1
 
-    def save_model(self, train_step):
+    def save_model(self, train_step, iterations):
+        # 这里的iterations代表第几次迭代
         num = str(train_step // self.args.save_rate)
         model_path = os.path.join(self.args.save_dir, self.args.scenario_name)
         if not os.path.exists(model_path):
@@ -117,5 +120,13 @@ class MADDPG:
             os.makedirs(model_path)
         # torch.save(self.actor_network.state_dict(), model_path + '/' + num + '_actor_params.pkl')
         # torch.save(self.critic_network.state_dict(), model_path + '/' + num + '_critic_params.pkl')
-        torch.save(self.actor_network.state_dict(), model_path + '/' + '_actor_params.pkl')
-        torch.save(self.critic_network.state_dict(), model_path + '/' + '_critic_params.pkl')
+        torch.save(self.actor_network.state_dict(), model_path + '/' + iterations + '_actor_params.pkl')
+        torch.save(self.critic_network.state_dict(), model_path + '/' + iterations + '_critic_params.pkl')
+
+
+    def set_mode(self, signal):
+        # 将MADDPG设置为评估模式或者是训练模式, 0是评估， 其他是训练
+        if signal == 0:
+            self.evaluate = True
+        else:
+            self.evaluate = False
