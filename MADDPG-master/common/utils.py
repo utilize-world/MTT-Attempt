@@ -3,6 +3,8 @@ import inspect
 import functools
 import matplotlib.pyplot as plt
 import random
+
+
 def store_args(method):
     """Stores provided method args as instance attributes.
     """
@@ -45,7 +47,8 @@ def make_env(args):
     # create world
     world = scenario.make_world()
     # create multiagent environment
-    env = MultiAgentEnv(world, scenario.reset_world, scenario.agent_reward, scenario.observation, None, scenario.done_judge)
+    env = MultiAgentEnv(world, scenario.reset_world, scenario.agent_reward, scenario.observation, None,
+                        scenario.done_judge)
     # env = MultiAgentEnv(world)
     args.n_players = env.n  # 包含敌人的所有玩家个数
     args.n_agents = env.n - args.num_adversaries  # 需要操控的玩家个数，虽然敌人也可以控制，但是双方都学习的话需要不同的算法
@@ -107,12 +110,15 @@ def check_agent_near_bound(agents_array, max_bound, low_bound):
         is_bound_all = False
     return is_bound_all
 
+
 import shutil
 import os
+
 
 def clear_folder(folder_path):
     shutil.rmtree(folder_path)
     os.mkdir(folder_path)
+
 
 # 用来设置调试的位置
 def begin_debug(condition):
@@ -120,16 +126,30 @@ def begin_debug(condition):
     if condition:
         pdb.set_trace()
 
+
 def ezDrawAPic(saved_path, saved_name, x_label, y_label, x_data, y_data):
     plt.figure()
-    plt.plot(range(len(x_data)), y_data)
+    plt.plot(x_data, y_data)
     plt.xlabel(x_label)
     plt.ylabel(y_label)
     plt.title(saved_name)
-    plt.savefig(saved_path + saved_name + '.png', format='png')
+    if not os.path.exists(saved_path):
+        os.makedirs(saved_path)
+    plt.savefig(saved_path + '/' + saved_name + '.png', format='png')
     plt.close()
+
 
 def randomWalk(origin_x, origin_y, x_delta_max, y_delta_max):
     delta_X = random.uniform(-x_delta_max, x_delta_max)
     delta_Y = random.uniform(-y_delta_max, y_delta_max)
     return origin_x + delta_X, origin_y + delta_Y
+
+
+def check_target_out_2D(target_pos, bound_x, bound_y):
+    # target的位置是二维的，[x,y]
+    # bound_x表示x轴的[xmin, xmax]
+    if bound_x[0] < target_pos[0] < bound_x[1] and bound_y[0] < target_pos[1] < bound_y[1]:
+        return False
+        # 表示没出界，否则出界
+    else:
+        return True

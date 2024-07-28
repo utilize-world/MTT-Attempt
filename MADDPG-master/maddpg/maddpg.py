@@ -38,12 +38,13 @@ class MADDPG:
             os.mkdir(self.model_path)
 
         # 加载模型
-
-        if os.path.exists(self.model_path + '/_actor_params.pkl') and self.evaluate == True:
+        #TODO: load model !!!!
+        id = 1
+        if os.path.exists(self.model_path + '/1_actor_params.pkl') and self.evaluate == True:
             self.actor_network.load_state_dict(
-                torch.load(self.model_path + '/' + self.iterations + '_actor_params.pkl'))
+                torch.load(self.model_path + '/' + str(self.iterations+1) + '_actor_params.pkl'))
             self.critic_network.load_state_dict(
-                torch.load(self.model_path + '/' + self.iterations + '_critic_params.pkl'))
+                torch.load(self.model_path + '/' + str(self.iterations+1) + '_critic_params.pkl'))
             print('Agent {} successfully loaded actor_network: {}'.format(self.agent_id,
                                                                           self.model_path + '/_actor_params.pkl'))
             print('Agent {} successfully loaded critic_network: {}'.format(self.agent_id,
@@ -120,8 +121,8 @@ class MADDPG:
             os.makedirs(model_path)
         # torch.save(self.actor_network.state_dict(), model_path + '/' + num + '_actor_params.pkl')
         # torch.save(self.critic_network.state_dict(), model_path + '/' + num + '_critic_params.pkl')
-        torch.save(self.actor_network.state_dict(), model_path + '/' + iterations + '_actor_params.pkl')
-        torch.save(self.critic_network.state_dict(), model_path + '/' + iterations + '_critic_params.pkl')
+        torch.save(self.actor_network.state_dict(), model_path + '/' + str(iterations) + '_actor_params.pkl')
+        torch.save(self.critic_network.state_dict(), model_path + '/' + str(iterations) + '_critic_params.pkl')
 
 
     def set_mode(self, signal):

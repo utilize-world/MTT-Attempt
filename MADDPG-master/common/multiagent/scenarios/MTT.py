@@ -14,10 +14,11 @@ class Scenario(BaseScenario):
         world = World()
         world.comm_range = 0.4
         world.bound = 1  # 尝试改变world的规模
+
         # set any world properties first
         # world.dim_c = 2     # 通信维度在这里也能定义，之前在core中已经定义过为3*agent的个数，这里将其注释掉
-        num_uav = 2  # 就是UAVs个数
-        num_target = 1  # 这个是target个数
+        num_uav = 3  # 就是UAVs个数
+        num_target = 2  # 这个是target个数
 
         num_landmarks = 0  # 没有阻挡物
 
@@ -26,6 +27,7 @@ class Scenario(BaseScenario):
         world.agents = [Agent() for i in range(num_uav)]
         world.targets_u = [target_UAVs() for i in range(num_target)]
         world.set_comm_dimension()
+        world.direction_changed_flag = [False] * len(world.targets_u)
         for i, agent in enumerate(world.agents):
             agent.name = 'agent %d' % i
             agent.collide = True
@@ -157,6 +159,7 @@ class Scenario(BaseScenario):
         dis_reward = 0
         safe_reward = 0
         bound_reward = 0
+        SE_reward = 0
         judge_rew = 3  # 奖励，用来控制边界
         #   边界奖励权重，越高则边界惩罚越大
         bound_reward_weight = 0.1
@@ -197,9 +200,9 @@ class Scenario(BaseScenario):
         # dis_reward = float((agent.obs_range - min_dis)) / (min_dis + agent.obs_range * 0.25)  # 修改奖励
         # dis_reward = math.exp(agent.obs_range - min_dis)
 
-        # if agent.obs_flag:
-        #     print("detected target")
-        #     dis_reward += 5
+        if agent.obs_flag:
+             print("detected target")
+             dis_reward += 1
 
 
         # distance reward-------------------
@@ -234,7 +237,7 @@ class Scenario(BaseScenario):
         for distance in distance_uavs_map[agent_index]:
             if 0 < distance <= agent.safe_range:
                 #safe_reward += np.float((distance - agent.safe_range)) / np.float(agent.safe_range) - 0.3
-                safe_reward += -0.06
+                safe_reward += -0.3
         #   三种奖励加起来就是每个agent的奖励
         reward = dis_reward + safe_reward + bound_reward
 
@@ -250,7 +253,14 @@ class Scenario(BaseScenario):
         # if bound_reward < 0:
         #     print("out of boundary, agent:", agent_index, 'value', bound_reward)
         ###############
-        return dis_reward + safe_reward
+
+        ### SE_reward
+        n = len(distance_uavs_map[agent_index])
+        ave_dis = 2 * sum(distance_uavs_map[agent_index]) / (n * (n-1))
+        if bound_reward == 0:
+            #只有不出界才有这个奖励
+            SE_reward = (ave_dis - agent.safe_range)/(world.SE_dis - agent.safe_range)
+        return dis_reward + safe_reward + bound_reward + 0.1 * SE_reward
 
     # 以下是对手的奖励，这里也没用
     # def adversary_reward(self, agent, world):
@@ -308,7 +318,7 @@ class Scenario(BaseScenario):
         # 18
         # 这里先不考虑通信
         # return np.hstack((agent_p, agent.state.move_angle, target_p, agent.state.target_angle, comm))
-        return obs
+        return obs_cat_com
 
     # def observation(self, agent, world):
     #     """

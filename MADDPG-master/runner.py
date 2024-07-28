@@ -7,7 +7,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from utils import begin_debug
 
-from common.utils import check_agent_bound, check_agent_near_bound
+from common.utils import check_agent_bound, check_agent_near_bound, ezDrawAPic
 from maddpg.maddpg import MADDPG
 from MASAC.MASAC import MASAC
 from MAPPO.MAPPO import MAPPO
@@ -66,7 +66,8 @@ class Runner:
         done = False
         rewards_list = []
         done_list = []
-        rewards_epi = []
+        rewards_epi = [0] * len(self.agents)  # 用来计算每个agent对应的reward_epi,individual，所以有多少个agent就有多少个
+        rewards_epi_list = []
         out_symbol = False
         critical_done = False
         if self.algorithm == "MAPPO":
@@ -110,6 +111,11 @@ class Runner:
                     nextdone.zero_()
 
                 current_time_step = 0
+
+                rewards_epi_list.append(rewards_epi)  # 这里的形式应该是[[r1t1,r2t1,r3t1..],[r1t2,r1t2]...]
+                # 其中ti就代表了第几个episode的reward和。
+                rewards_epi = [0] * len(self.agents)
+
                 rewards_list.append(rewards)
                 rewards_list = rewards_list[-50000:]  # 取最后2000个训练episode
                 rewards = 0
@@ -136,8 +142,6 @@ class Runner:
                 self.env.shared_reward = False  # 这一步是让每个agent根据自己的奖励训练自己
             s_next, r, done, info = self.env.step(actions)
 
-
-
             # 这地方新加的，如果全部出界，则结束当前episode，并给予惩罚
             critical_done = check_agent_bound(self.env.world.agents, self.env.world.bound, 0)
             done_list.append(done)
@@ -149,9 +153,14 @@ class Runner:
             ################### 单个的时候就不考虑这个奖励了
             if not (False in done):
                 r = [x + 5 for x in r]
-            rewards += float(sum(r)) / float(len(self.agents))  # 这里的 reward是一个episode的reward
-            train_returns.append(rewards)  # 这里的train——returns是取每个时间步的reward
+            # TODO: 这个位置实际就是对每个timestep进行的数据处理
+
+            rewards_epi = [x + y for x, y in zip(rewards_epi, r)]  # 将每个agent的reward都单独处理，指叠加，为了计算
+
+            rewards += float(sum(r)) / float(len(self.agents))  # 这里的 reward是一个episode的reward，均值
+            train_returns.append(rewards)  # 这里的train——returns是取每个时间步的reward，所以这里看的是timestep尺度的reward变化
             train_returns_clip = train_returns[-1000:]  # 取最后1000个时间步
+
             if self.algorithm == "MAPPO":
                 for agent in range(len(self.agents)):
                     dones[agent][current_time_step] = done[agent]
@@ -187,7 +196,8 @@ class Runner:
                                     rewards=rewards_mappo_timestep[i, :current_time_step, :],
                                     nextdone=nextdone[i, :current_time_step, :], time_steps=current_time_step)
             current_time_step += 1
-
+            # TODO：画图部分，其实这里有待考究，因为每个episode的时间步都已经不一样了，按道理每次画图检查是根据episode数来
+            #  计算，而不是根据timestep数来计算，即evaluate_rate(这个值实际上是时间步有关的值）
             if time_step > 0 and time_step % self.args.evaluate_rate == 0:
                 returns.append(self.evaluate())
 
@@ -197,7 +207,7 @@ class Runner:
                 plt.plot(range(len(train_returns_clip)), train_returns_clip)
                 plt.xlabel('time steps ')
                 plt.ylabel('instant training reward')
-                plt.title('training reward')
+                plt.title('training reward(average)')
 
                 plt.subplot(3, 1, 2)
                 plt.plot(range(len(returns)), returns)
@@ -208,11 +218,25 @@ class Runner:
                 plt.subplot(3, 1, 3)
                 plt.plot(range(len(rewards_list)), rewards_list)
                 plt.xlabel('training episode')
-                plt.ylabel('average returns')
-                plt.title('training episode rewards')
+                plt.ylabel('average epi reward')
+                plt.title('training episode average rewards')
                 plt.savefig(self.save_path + '/plt' + str(self.number) + '.png', format='png')
 
                 plt.close()  # 不用每次都跳出来
+
+                # 这里分别画出每个agent独自的奖励(单个epi的奖励和)
+                # 本来可以这样做，但是为了方便，用了utils自己的简单的画图函数
+                # fig, axs = plt.subplots(2, 1)
+                #
+                # axs[0].plot(x, y1)
+                #
+                # axs[1].plot(x, y2)
+                for i in range(len(self.agents)):
+                    save_path = self.save_path + '/individual_returns(per_epi)' + '/' + str(
+                        self.number) + "/agent" + str(i)
+                    x_data = range(len(rewards_epi_list))
+                    y_data = [rew[i] for rew in rewards_epi_list]   # 相当于取列向量了，一共有epi*agent数的值
+                    ezDrawAPic(save_path, f"agent{i}_episode_reward_sum", "episodes", "returns", x_data, y_data)
 
             self.noise = max(0.05, self.noise - 0.0000005)
             self.epsilon = max(0.05, self.epsilon - 0.00005)

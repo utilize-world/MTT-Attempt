@@ -4,7 +4,7 @@ import math
 import numpy.random
 from utils import begin_debug
 from utils import find_index
-from utils import randomWalk
+from utils import randomWalk, check_target_out_2D
 
 
 # physical/external base state of all entites
@@ -215,8 +215,13 @@ class World(object):  # 最关键的
         self.Na = 20
         # 定义是否在训练，这与状态有关
         self.train = True
-
+        # Spacial Entropy distance
+        self.SE_dis = self.bound / 4
         self.update_time = 0  # 用于target更新计时
+
+        # 以下用于target出界检测
+        self.direction_changed_flag = [False]*len(self.targets_u) # 用于target出界检测，是否变动过角度？
+        self.t_out_bound = False    # 用于记录target是否出界
 
     # return all entities in the world
     @property
@@ -266,18 +271,26 @@ class World(object):  # 最关键的
         """
         low_rebound = self.rebound
         high_rebound = self.bound - low_rebound  # 这两个参数用来控制target的回弹
-        for target in self.targets_u:
-            # 位置更新,目标的位置
-            if (target.state.p_pos[0] < low_rebound and target.state.move_angle > 90) or \
-                    (target.state.p_pos[0] > high_rebound and 0 < target.state.move_angle < 90):
-                target.state.move_angle = (180 - target.state.move_angle)  # 反弹
-            if (target.state.p_pos[0] < low_rebound and target.state.move_angle < -90) or \
-                    (target.state.p_pos[0] > high_rebound and 0 > target.state.move_angle > -90):
-                target.state.move_angle = -(180 + target.state.move_angle)
-            if target.state.p_pos[1] < low_rebound and target.state.move_angle < 0:
-                target.state.move_angle *= -1
-            if target.state.p_pos[1] > high_rebound and target.state.move_angle > 0:
-                target.state.move_angle *= -1
+
+        for i, target in enumerate(self.targets_u):
+            # 当前target是否出界，如果出界，并且已经更改过了角度，则不再更改角度
+
+            if not self.direction_changed_flag[i]:
+                # 位置更新,目标的位置
+                if (target.state.p_pos[0] < low_rebound and target.state.move_angle > 90) or \
+                        (target.state.p_pos[0] > high_rebound and 0 < target.state.move_angle < 90):
+                    target.state.move_angle = (180 - target.state.move_angle)  # 反弹
+                    self.direction_changed_flag[i] = True
+                if (target.state.p_pos[0] < low_rebound and target.state.move_angle < -90) or \
+                        (target.state.p_pos[0] > high_rebound and 0 > target.state.move_angle > -90):
+                    target.state.move_angle = -(180 + target.state.move_angle)
+                    self.direction_changed_flag[i] = True
+                if target.state.p_pos[1] < low_rebound and target.state.move_angle < 0:
+                    target.state.move_angle *= -1
+                    self.direction_changed_flag[i] = True
+                if target.state.p_pos[1] > high_rebound and target.state.move_angle > 0:
+                    target.state.move_angle *= -1
+                    self.direction_changed_flag[i] = True
             # 固定方向运动
             # 固定方向为指定角度：一直保持
 
@@ -286,13 +299,18 @@ class World(object):  # 最关键的
                                                                    (math.pi / 180)) * self.dt
             target.state.p_pos[1] += target.state.p_vel * math.sin(target.state.move_angle *
                                                                    (math.pi / 180)) * self.dt
-
+            self.t_out_bound = check_target_out_2D(target.state.p_pos, [low_rebound, high_rebound],
+                                                   [low_rebound, high_rebound])
+            # 检查是否在界内？如果在界内，就可以重新开始出界检查，否则继续认为出界，角度和随机游走都不再发生
+            if not self.t_out_bound:
+                self.direction_changed_flag[i] = False
             # 随机游动，这里是固定时间间隔就会变化一次9
             # TODO:target moving policy
-            if self.update_time % 20 == 0 and self.update_time > 0:
+            # 如果角度还没改变，才能使用随机游走，否则表明已经出界，就别游走了
+            if not self.direction_changed_flag[i] and self.update_time % 40 == 0 and self.update_time > 0:
                 target.state.p_vel, target.state.move_angle = randomWalk(target.state.p_vel,
                                                                          target.state.move_angle,
-                                                                         0.02,
+                                                                         0.01,
                                                                          90
                                                                          )
                 self.update_time = 0
