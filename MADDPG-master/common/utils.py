@@ -53,6 +53,7 @@ def make_env(args):
     args.n_players = env.n  # 包含敌人的所有玩家个数
     args.n_agents = env.n - args.num_adversaries  # 需要操控的玩家个数，虽然敌人也可以控制，但是双方都学习的话需要不同的算法
     args.obs_shape = [env.observation_space[i].shape[0] for i in range(args.n_agents)]  # 每一个元素代表该agent的obs维度
+    args.n_targets = env.n_targets
     action_shape = []
     for content in env.action_space:
         action_shape.append(content)
@@ -153,3 +154,11 @@ def check_target_out_2D(target_pos, bound_x, bound_y):
         # 表示没出界，否则出界
     else:
         return True
+
+
+def cal_dis(pos1, pos2):
+    dis = np.sqrt(np.square(pos1[0] - pos2[0]) + np.square(pos1[1] - pos2[1]))
+    return dis
+
+def cal_relative_pos(pos1, pos2):
+    return pos2 - pos1

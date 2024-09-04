@@ -22,6 +22,7 @@ class MultiAgentEnv(gym.Env):
         # set required vectorized gym env property
         # self.n = len(world.policy_agents)##
         self.n = len(world.agents)
+        self.n_targets = len(self.world.targets_u)
         # scenario callbacks
         self.reset_callback = reset_callback
         self.reward_callback = reward_callback

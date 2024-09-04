@@ -15,7 +15,7 @@ class MADDPG:
         self.critic_network = Critic(args).to(self.device)
         self.evaluate = self.args.evaluate
         # build up the target network
-        self.actor_target_network = Actor(args, agent_id).to(self.device).to(self.device)
+        self.actor_target_network = Actor(args, agent_id).to(self.device)
         self.critic_target_network = Critic(args).to(self.device)
 
         # load the weights into the target networks
@@ -38,7 +38,7 @@ class MADDPG:
             os.mkdir(self.model_path)
 
         # 加载模型
-        #TODO: load model !!!!
+        # TODO: load model !!!!
         id = 1
         if os.path.exists(self.model_path + '/1_actor_params.pkl') and self.evaluate == True:
             self.actor_network.load_state_dict(
@@ -61,7 +61,7 @@ class MADDPG:
     # update the network
     def train(self, transitions, other_agents):
         for key in transitions.keys():
-            transitions[key] = torch.tensor(transitions[key], dtype=torch.float32)
+            transitions[key] = torch.tensor(transitions[key], dtype=torch.float32).to(self.device)
         r = transitions['r_%d' % self.agent_id]  # 训练时只需要自己的reward
         o, u, o_next = [], [], []  # 用来装每个agent经验中的各项
         for agent_id in range(self.args.n_agents):
@@ -73,7 +73,7 @@ class MADDPG:
         u_next = []
 
         with torch.no_grad():
-            # 得到下一个状态对应的动作
+                # 得到下一个状态对应的动作
             index = 0
             for agent_id in range(self.args.n_agents):
                 if agent_id == self.agent_id:
@@ -86,7 +86,8 @@ class MADDPG:
 
             target_q = (r.unsqueeze(1) + self.args.gamma * q_next).detach()
 
-        # the q loss
+
+            # the q loss
         q_value = self.critic_network(o, u)
         critic_loss = (target_q - q_value).pow(2).mean()
 
@@ -97,6 +98,12 @@ class MADDPG:
         # if self.agent_id == 0:
         #     print('critic_loss is {}, actor_loss is {}'.format(critic_loss, actor_loss))
         # update the network
+        # TODO: Test
+        # print(r.device)  # 确认奖励张量在GPU上
+        # print(q_value.device)  # 确认Q值计算在GPU上
+        # print(actor_loss.device)  # 确认Actor损失在GPU上
+
+
         self.actor_optim.zero_grad()  # 每次更新前，必须将所要更新梯度的网络梯度置0，因为梯度是累积的
         # 在通过backward计算完梯度后(产生梯度)，经过step来通过梯度下降法更新参数的值
         actor_loss.backward()
