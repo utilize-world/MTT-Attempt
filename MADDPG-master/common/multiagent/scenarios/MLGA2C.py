@@ -7,23 +7,32 @@ from utils import cal_dis, cal_relative_pos
 import sys
 
 sys.path.append('../')
+
+
 # from collect_Info_for_att import get_target_info
 
 
 # MLGA2C中的环境，为了简化，将原本的5v5变成3v3
 
 
-def calculate_relative_position_of_other_agents(agent, world):
+def calculate_relative_position_of_other_agents(agent, other, world, fortarget=False):
     relative_position_map = []
     # 假设agent j的位置为pj，agent i的位置为pi， 则相对位置为|pj-pi|
     pi = agent.state.p_pos
-    for other_agent in world.agents:
-        pj = other_agent.state.p_pos
-        # 如果在通信范围，则拼接上去，否则不拼接
-        if 0 < cal_dis(pi, pj) <= world.comm_range:
+    if not fortarget:
+        for other_agent in other:
+            pj = other_agent.state.p_pos
+            # 如果在通信范围，则拼接上去，否则不拼接
+
+            if 0 < cal_dis(pi, pj) <= world.comm_range:
+                relative_position_map.append(cal_relative_pos(pi, pj))
+            elif cal_dis(pi, pj) > world.comm_range:
+                relative_position_map.append([0, 0])
+    else:
+        for other_agent in other:
+            pj = other_agent.state.p_pos
             relative_position_map.append(cal_relative_pos(pi, pj))
-        elif cal_dis(pi, pj) > world.comm_range:
-            relative_position_map.append([0, 0])
+    relative_position_map = np.array(relative_position_map).flatten()
     return relative_position_map
 
 
@@ -57,13 +66,13 @@ class Scenario(BaseScenario):
             agent.obs_range = 0.3  # 观察区域为0.3m，在这个范围内，就不会获得惩罚
             agent.safe_range = 0.3  # 安全区域也为0.3m，这个范围内就不安全，会受到碰撞惩罚
             # agent.adversary = True if i < num_adversaries else False    # 前面的为追踪者
-            agent.size = 0.15  # if agent.adversary else 0.05    # ?这个尺寸有什么用
+            agent.size = 0.05  # if agent.adversary else 0.05    # ?这个尺寸有什么用
             # agent.accel = 3.0 if agent.adversary else 4.0     # 不需要加速度，可以为0
             # agent.accel = 20.0 if agent.adversary else 25.0
             agent.max_speed = 1.0  # if agent.adversary else 1.3   # 最大速度，速度应设置为恒定，待修改
         for i, target in enumerate(world.targets_u):
             target.name = 'target %d' % i
-            target.size = 0.015
+            target.size = 0.05
 
         world.landmarks = [Landmark() for i in range(num_landmarks)]
         self.reset_world(world)
@@ -95,10 +104,9 @@ class Scenario(BaseScenario):
             agent.state.target_pos = np.zeros(world.dim_p)
         for target in world.targets_u:
             target.state.p_pos = np.random.uniform(bound_ad_value, world.bound - bound_ad_value, world.dim_p)
-            target.state.p_vel = 0.04
+            target.state.p_vel = 0.1
             target.state.move_angle = np.random.uniform(-180, 180, 1)  # 唯一与agent的不同就是速度稍慢
-            target.state.move_angle = 60  # 固定角度，用来测试
-            target.state.p_pos = [0.5, 0.5]
+
         for i, landmark in enumerate(world.landmarks):
             if not landmark.boundary:
                 landmark.state.p_pos = np.random.uniform(-0.9, +0.9, world.dim_p)
@@ -158,7 +166,8 @@ class Scenario(BaseScenario):
         if min_dis <= agent.obs_range:
             time_reward = 0
         #     ----------------------------------------------------
-
+        if agent.obs_flag:
+            print("detected target")
         # ### SE_reward
         # n = len(distance_uavs_map[agent_index])
         # ave_dis = 2 * sum(distance_uavs_map[agent_index]) / (n * (n-1))
@@ -179,16 +188,16 @@ class Scenario(BaseScenario):
         """
         # comm = agent.state.c  # 每个comm的维度为6,
         # target_p = agent.state.target_pos  # 2
-        _, target_p = get_target_info(world.targets_u, len(world.targets_u))  # 2*2
+
         agent_p = agent.state.p_pos  # 2
         velx = agent.state.p_vel  # 1
         vely = agent.state.move_angle  # 1
-        temp = []
-        for target in world.targets_u:
-            temp.append(target.state.p_pos)
-
-        relative_pos = calculate_relative_position_of_other_agents(agent, world)
-        obs_cat = np.hstack((agent_p, velx, vely, temp, relative_pos))
+        # temp = []
+        # for target in world.targets_u:
+        #     temp.append(target.state.p_pos)
+        target_relative_pos = calculate_relative_position_of_other_agents(agent, world.targets_u, world, fortarget=True)
+        agent_relative_pos = calculate_relative_position_of_other_agents(agent, world.agents, world)
+        obs_cat = np.hstack((agent_p, velx, vely, target_relative_pos, agent_relative_pos))
 
         return obs_cat
 

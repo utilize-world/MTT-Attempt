@@ -12,9 +12,9 @@ def get_args():
     parser.add_argument("--training-times", type=int, default=20, help="numbers of Training")
     parser.add_argument("--cuda", type=bool, default=True, help="cuda enable")
     # Environment
-    parser.add_argument("--scenario-name", type=str, default="MTT", help="name of the scenario script")
-    parser.add_argument("--max-episode-len", type=int, default=500, help="maximum episode length")
-    parser.add_argument("--time-steps", type=int, default=400000, help="number of time steps")
+    parser.add_argument("--scenario-name", type=str, default="MLGA2C", help="name of the scenario script")
+    parser.add_argument("--max-episode-len", type=int, default=200, help="maximum episode length")
+    parser.add_argument("--time-steps", type=int, default=200000, help="number of time steps")
     # 一个地图最多env.n个agents，用户可以定义min(env.n,num-adversaries)个敌人，剩下的是好的agent
     parser.add_argument("--num-adversaries", type=int, default=0, help="number of adversaries")
     # Core training parameters

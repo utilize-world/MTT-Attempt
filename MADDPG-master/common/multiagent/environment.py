@@ -21,7 +21,7 @@ class MultiAgentEnv(gym.Env):
         self.agents = self.world.agents
         # set required vectorized gym env property
         # self.n = len(world.policy_agents)##
-        self.n = len(world.agents)
+        self.n = len(self.agents)
         self.n_targets = len(self.world.targets_u)
         # scenario callbacks
         self.reset_callback = reset_callback
@@ -280,7 +280,7 @@ class MultiAgentEnv(gym.Env):
             from multiagent import rendering
             # update bounds to center around agent
             # 这个range是什么，控制窗口的缩放系数
-            cam_range = 1
+            cam_range = self.world.bound
             if self.shared_viewer:
                 pos = np.zeros(self.world.dim_p)
             else:

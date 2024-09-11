@@ -7,7 +7,10 @@ import torch
 from draw_plt import collect_data_and_save_drawings
 from utils import clear_folder
 seed = 0
-algorithm = "MADDPG"
+algorithm = "MLGA2C"
+import os
+
+os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 if __name__ == '__main__':
     # get the params
     random.seed(seed)

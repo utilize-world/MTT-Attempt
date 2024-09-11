@@ -11,7 +11,7 @@ from common.utils import check_agent_bound, check_agent_near_bound, ezDrawAPic
 from maddpg.maddpg import MADDPG
 from MASAC.MASAC import MASAC
 from MAPPO.MAPPO import MAPPO
-
+from MLGA2C.MLGA2C import MLGA2C
 
 class Runner:
     """
@@ -28,6 +28,7 @@ class Runner:
         self.algorithm = algorithm
         self.agents = self._init_agents(self.algorithm)
         self.buffer = Buffer(args)
+        self.dataloader = None
         self.save_path = self.args.save_dir + '/' + self.args.scenario_name + '/' + self.algorithm
         ## 规定存放csv的路径位置以及存放fig的位置
         self.csv_save_dir = self.args.csv_save_dir + '/' + self.args.scenario_name + '/' + self.algorithm
@@ -49,6 +50,11 @@ class Runner:
                 agents.append(agent)
         elif algorithms == "MASAC":
             policy = MASAC(self.args)  # 采用共享参数的方式
+            for i in range(self.args.n_agents):
+                agent = Agent(i, self.args, policy, algorithms)
+                agents.append(agent)
+        elif algorithms == "MLGA2C":
+            policy = MLGA2C(self.args)  # 采用共享参数的方式
             for i in range(self.args.n_agents):
                 agent = Agent(i, self.args, policy, algorithms)
                 agents.append(agent)
@@ -169,7 +175,7 @@ class Runner:
 
                     rewards_mappo_timestep[agent][current_time_step] = r[agent]
                 s = s_next
-            if self.algorithm == "MADDPG" or self.algorithm == "MASAC":
+            if self.algorithm == "MADDPG" or self.algorithm == "MASAC" or self.algorithm == "MLGA2C":
                 self.buffer.store_episode(s[:self.args.n_agents], u, r[:self.args.n_agents],
                                           s_next[:self.args.n_agents])
                 s = s_next

@@ -207,9 +207,9 @@ class World(object):  # 最关键的
         # 通信表，用来表示与所有agent的通信的逻辑关系
         self.comm_map = np.zeros((len(self.agents), len(self.agents)))
         # 通信范围
-        self.comm_range = 0.2
+        self.comm_range = 0.5
         # 边
-        self.bound = 1
+        self.bound = 2
         self.rebound = 0.05
         self.dim_ac = 6
         self.Na = 20

@@ -27,9 +27,9 @@ class Agent:
             # np.clip(a, a_min, a_max, out=None) 限制其值在amin，amax之间
             u += np.float((self.args.high_action-self.args.low_action)/2)     # 要限制其动作在0到high_action内
 
-        elif self.algorithm == "MASAC" or self.algorithm == "MAPPO":
-            inputs = torch.tensor(o, dtype=torch.float32).unsqueeze(0)
-            if self.algorithm == "MASAC":
+        elif self.algorithm == "MASAC" or self.algorithm == "MAPPO" or self.algorithm == "MLGA2C":
+            inputs = torch.tensor(o, dtype=torch.float32).unsqueeze(0).cuda()
+            if self.algorithm == "MASAC" or self.algorithm == "MLGA2C":
                 pi2, prob, _, _ = self.policy.policy.get_actions(inputs)
             else:
                 pi2, prob, _ = self.policy.policy.get_actions(inputs)
@@ -65,6 +65,8 @@ class Agent:
         if algorithm == "MADDPG":
             self.policy.train(transitions, other_agents)
         elif algorithm == "MASAC":
+            self.policy.train(transitions, self.agent_id)
+        elif algorithm == "MLGA2C":
             self.policy.train(transitions, self.agent_id)
         elif algorithm == "MAPPO":
             self.policy.train(obs, next_obs, values, dones, actions, logprobs, rewards, nextdone, self.agent_id, time_steps)
