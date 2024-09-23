@@ -10,7 +10,8 @@ class Actor(nn.Module):
         super(Actor, self).__init__()
         self.max_action = args.high_action
         self.min_action = args.low_action
-        self.fc1 = nn.Linear(args.obs_shape[agent_id], 64)  # 18*64
+        self.input_dim = args.obs_shape[agent_id]
+        self.fc1 = nn.Linear(self.input_dim, 64)  # 18*64
         self.fc2 = nn.Linear(64, 64)            # Fully connected
         self.fc3 = nn.Linear(64, 64)
         self.action_out = nn.Linear(64, args.action_shape[agent_id])
@@ -21,14 +22,19 @@ class Actor(nn.Module):
         x = F.relu(self.fc3(x))
         actions = ((self.max_action-self.min_action)/2) * torch.tanh(self.action_out(x))  # 控制在[-1,1]*max_action
 
+
         return actions
 
+    def get_input_dim(self):
+        return self.input_dim
 
 class Critic(nn.Module):
     def __init__(self, args):
         super(Critic, self).__init__()
         self.max_action = args.high_action
-        self.fc1 = nn.Linear(sum(args.obs_shape) + sum(args.action_shape), 64)  # 输入维度是观测维度和动作维度的和
+        self.args = args
+        self.input_dim = sum(args.obs_shape) + sum(args.action_shape)
+        self.fc1 = nn.Linear(self.input_dim, 64)  # 输入维度是观测维度和动作维度的和
         # 也就是说输入是两者的拼接
         self.fc2 = nn.Linear(64, 64)
         self.fc3 = nn.Linear(64, 64)
@@ -48,3 +54,25 @@ class Critic(nn.Module):
         x = F.relu(self.fc3(x))
         q_value = self.q_out(x)
         return q_value
+
+    def get_input_dim(self):
+        return sum(self.args.obs_shape), sum(self.args.action_shape)
+
+# 只是用于tensorboard画出网络结构的类
+class Wrapper(nn.Module):
+    def __init__(
+        self,
+        args,
+        agent_id,
+    ):
+        super().__init__()
+        # build policy and value functions
+        self.actor = Actor(args, agent_id)
+        self.critic = Critic(args)
+
+    def forward(self, obs, act, obs_ac):
+
+        # Perform a forward pass through all the networks and return the result
+        actions = self.actor(obs_ac)
+        q = self.critic([obs], [act])
+        return actions, q

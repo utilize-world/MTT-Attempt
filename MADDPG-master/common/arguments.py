@@ -11,6 +11,8 @@ def get_args():
     # Training
     parser.add_argument("--training-times", type=int, default=20, help="numbers of Training")
     parser.add_argument("--cuda", type=bool, default=True, help="cuda enable")
+    parser.add_argument("--writer", type=bool, default=True, help='enable tensorboard')
+
     # Environment
     parser.add_argument("--scenario-name", type=str, default="MLGA2C", help="name of the scenario script")
     parser.add_argument("--max-episode-len", type=int, default=200, help="maximum episode length")
@@ -46,10 +48,11 @@ def get_args():
     parser.add_argument("--model-dir", type=str, default="", help="directory in which training state and model are loaded")
     parser.add_argument("--fig-save-dir", type=str, default="./figures", help="directory in which save the sns_plot figure")
     parser.add_argument("--csv-save-dir", type=str, default="./data_p", help="directory in which training data(including rewards at which training number)")
+    parser.add_argument("--tensorboard-dir", type=str, default='tensorboard_data',help="directory in which stores the data using in tensorboard")
 
     # Evaluate
-    parser.add_argument("--evaluate-episodes", type=int, default=5, help="number of episodes for evaluating")
-    parser.add_argument("--evaluate-episode-len", type=int, default=600, help="length of episodes for evaluating")
+    parser.add_argument("--evaluate-episodes", type=int, default=100, help="number of episodes for evaluating")
+    parser.add_argument("--evaluate-episode-len", type=int, default=200, help="length of episodes for evaluating")
     parser.add_argument("--evaluate", type=bool, default=False, help="whether to evaluate the model")
     parser.add_argument("--evaluate-rate", type=int, default=10000, help="how often to evaluate model")
     args = parser.parse_args()

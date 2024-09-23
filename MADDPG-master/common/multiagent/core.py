@@ -4,7 +4,7 @@ import math
 import numpy.random
 from utils import begin_debug
 from utils import find_index
-from utils import randomWalk, check_target_out_2D
+from utils import randomWalk, check_target_out_2D, limit_vel
 
 
 # physical/external base state of all entites
@@ -210,7 +210,7 @@ class World(object):  # 最关键的
         self.comm_range = 0.5
         # 边
         self.bound = 2
-        self.rebound = 0.05
+        self.rebound = 0.08
         self.dim_ac = 6
         self.Na = 20
         # 定义是否在训练，这与状态有关
@@ -218,7 +218,7 @@ class World(object):  # 最关键的
         # Spacial Entropy distance
         self.SE_dis = self.bound / 4
         self.update_time = 0  # 用于target更新计时
-
+        self.vel_bound = 0.08   # limit velo
         # 以下用于target出界检测
         self.direction_changed_flag = [False]*len(self.targets_u) # 用于target出界检测，是否变动过角度？
         self.t_out_bound = False    # 用于记录target是否出界
@@ -307,7 +307,7 @@ class World(object):  # 最关键的
             # 随机游动，这里是固定时间间隔就会变化一次9
             # TODO:target moving policy
             # 如果角度还没改变，才能使用随机游走，否则表明已经出界，就别游走了
-            if not self.direction_changed_flag[i] and self.update_time % 40 == 0 and self.update_time > 0:
+            if not (self.direction_changed_flag[i]) and (self.update_time % 50 == 0) and (self.update_time > 0):
                 target.state.p_vel, target.state.move_angle = randomWalk(target.state.p_vel,
                                                                          target.state.move_angle,
                                                                          0.01,
@@ -333,11 +333,15 @@ class World(object):  # 最关键的
                 target.out = False
             # 对agent也就是无人机进行更新，位置，角度和
         for i, agent in enumerate(self.agents):
-            agent.state.move_angle += np.float((2 * agent.action.u[0] - self.Na - 1)) / (self.Na - 1) * 0.02 * self.dt
-            agent.state.p_vel += np.float((2 * agent.action.u[1] - self.Na - 1)) / (
-                        self.Na - 1) * 0.02 * self.dt  # 最大加速度为±5
-            # agent.state.move_angle += agent.action.u[0] * self.dt     # directly apply the u to velocity control
-            # agent.state.p_vel += agent.action.u[1] * self.dt
+            # agent.state.move_angle += np.float((2 * agent.action.u[0] - self.Na - 1)) / (self.Na - 1) * 0.02 * self.dt
+            # agent.state.p_vel += np.float((2 * agent.action.u[1] - self.Na - 1)) / (
+            #             self.Na - 1) * 0.02 * self.dt  # 最大加速度为±5
+            agent.state.move_angle += agent.action.u[0] * self.dt     # directly apply the u to velocity control
+            agent.state.p_vel += agent.action.u[1] * self.dt
+            #  TODO: xiansu
+            agent.state.move_angle, agent.state.p_vel = limit_vel(agent.state.move_angle, self.vel_bound), \
+                                                        limit_vel(agent.state.p_vel, self.vel_bound)
+            #
 
             # agent.state.p_pos[0] += agent.state.p_vel * math.cos(agent.state.move_angle *
             #                                                      (math.pi / 180)) * self.dt

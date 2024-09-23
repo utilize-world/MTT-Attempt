@@ -53,7 +53,7 @@ class GlobalAttention(nn.Module):
 
         attention_scores = torch.matmul(Q, K.transpose(-2, -1))  # (batch_size, 4, 8, 8*(n-1))
         attention_probs = F.softmax(attention_scores, dim=-1)  # (batch_size, 4, 8, 8*(n-1))
-        vi = torch.matmul(attention_probs, V)  # (batch_size, 4, 8, 32)
+        vi = torch.matmul(attention_probs, V)  # (batch_size, 4, 8*(n-1), 32)
 
         vi = combine_heads(vi, self.head_num)
         # 返回的形状都是(batch, 8, 128)

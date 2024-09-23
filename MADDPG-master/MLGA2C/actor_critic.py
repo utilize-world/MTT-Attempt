@@ -15,16 +15,16 @@ class Actor(nn.Module):
     """
        actor网络的输入为每个agent的观察维度，输出为均值与对数标准差，
        """
-    def __init__(self, args, agent_id, init_w=3e-3):
+    def __init__(self, args, init_w=3e-3):
         super(Actor, self).__init__()
         self.max_action = args.high_action
         self.min_action = args.low_action
-        self.actor_id = agent_id
-        self.fc1 = nn.Linear(args.obs_shape[agent_id], 64)  # 18*64
+        self.input_dim = args.obs_shape[0]
+        self.fc1 = nn.Linear(self.input_dim, 64)  # 18*64
         self.fc2 = nn.Linear(64, 64)            # Fully connected
         self.fc3 = nn.Linear(64, 64)
-        self.fc_logstd = nn.Linear(64, args.action_shape[agent_id])    #
-        self.fc_mean = nn.Linear(64, args.action_shape[agent_id])   # 均值输出层
+        self.fc_logstd = nn.Linear(64, args.action_shape[0])    #
+        self.fc_mean = nn.Linear(64, args.action_shape[0])   # 均值输出层
 
         # self.fc_mean.weight.data.uniform_(-init_w, init_w)
         # self.fc_mean.bias.data.uniform_(-init_w, init_w)
@@ -131,7 +131,9 @@ class Q_net(nn.Module):
         # # 这里的local_repre为ei，形状为(batch, state_repre, 2)  与输入一致
         x = torch.cat((ei, ej), dim=-1) # 最后一维进行拼接，就变成了(batch, sequence_len, 256)
         x = F.relu(self.fc1(x))
+        # q_value = self.layer_norm(x)
         q_value = self.q_out(x)     # (batch_size, sequence_len, 1)
+
         # Global average pooling to get (batch_size, 1)
         # TODO: 不知道这一步是否正确,把第二维的值取平均，就消除掉了第二维
         final_output = q_value.mean(dim=1)  # (batch_size, 1)
@@ -160,3 +162,20 @@ class Q_net(nn.Module):
 
         ei, ej = self.globalATT(eloc_i, eother) # 经过globalATT得到了两者表达
         return ei, ej
+
+class Wrapper(nn.Module):
+    def __init__(
+        self,
+        args
+    ):
+        super().__init__()
+        # build policy and value functions
+        self.actor = Actor(args)
+        self.critic = Q_net(args)
+
+    def forward(self, x, state_own, state_others, action_own, action_others):
+
+        # Perform a forward pass through all the networks and return the result
+        actions = self.actor(x)
+        q = self.critic(state_own, state_others, action_own, action_others)
+        return actions, q

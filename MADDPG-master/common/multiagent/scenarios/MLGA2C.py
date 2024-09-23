@@ -64,7 +64,7 @@ class Scenario(BaseScenario):
             agent.collide = True
             agent.silent = False
             agent.obs_range = 0.3  # 观察区域为0.3m，在这个范围内，就不会获得惩罚
-            agent.safe_range = 0.3  # 安全区域也为0.3m，这个范围内就不安全，会受到碰撞惩罚
+            agent.safe_range = 0.15  # 安全区域也为0.3m，这个范围内就不安全，会受到碰撞惩罚
             # agent.adversary = True if i < num_adversaries else False    # 前面的为追踪者
             agent.size = 0.05  # if agent.adversary else 0.05    # ?这个尺寸有什么用
             # agent.accel = 3.0 if agent.adversary else 4.0     # 不需要加速度，可以为0
@@ -104,7 +104,7 @@ class Scenario(BaseScenario):
             agent.state.target_pos = np.zeros(world.dim_p)
         for target in world.targets_u:
             target.state.p_pos = np.random.uniform(bound_ad_value, world.bound - bound_ad_value, world.dim_p)
-            target.state.p_vel = 0.1
+            target.state.p_vel = 0.04
             target.state.move_angle = np.random.uniform(-180, 180, 1)  # 唯一与agent的不同就是速度稍慢
 
         for i, landmark in enumerate(world.landmarks):
@@ -152,10 +152,10 @@ class Scenario(BaseScenario):
         dis_reward = 0  # 距离和奖励
         dis_weight = 1  # 距离和权重
         collision_reward = 0  # 如果与其他无人机碰撞，则会获得惩罚，这一点只需要先判断是否有通信存在，然后再判断最近
-        time_reward = -1  # 如果目标在感知范围内，则为0，否则就是一个惩罚时间的奖励
+        time_reward = -0.01  # 如果目标在感知范围内，则为0，否则就是一个惩罚时间的奖励
         #     -------------------------distance sum---------------
         dis_map = world.distance_cal_target()  # 得到一个所有UAV相对所有target的距离矩阵
-        dis_reward = - dis_weight * dis_map.sum()
+        dis_reward = - dis_weight * dis_map.sum() / len(dis_map) # 平均
 
         #     -------------------------collision reward-----------
         distance_uavs_map = world.distance_cal_agent()  # 这样做每次都要调用一次全局的表，实在是有点浪费，但是懒得改了
@@ -164,10 +164,10 @@ class Scenario(BaseScenario):
         #     -------------------------time_reward----------------
         min_dis = np.min(dis_map[agent_index])
         if min_dis <= agent.obs_range:
-            time_reward = 0
+            time_reward = 1
         #     ----------------------------------------------------
-        if agent.obs_flag:
-            print("detected target")
+        # if agent.obs_flag:
+        #     print("detected target")
         # ### SE_reward
         # n = len(distance_uavs_map[agent_index])
         # ave_dis = 2 * sum(distance_uavs_map[agent_index]) / (n * (n-1))

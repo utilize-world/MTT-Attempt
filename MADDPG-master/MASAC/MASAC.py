@@ -71,7 +71,7 @@ class MASAC:
 
     def train(self, transitions, agent_id):
         for key in transitions.keys():
-            transitions[key] = torch.tensor(transitions[key], dtype=torch.float32)
+            transitions[key] = torch.tensor(transitions[key], dtype=torch.float32).to(self.device)
         # transition实际上是一个字典，是agent数量*4个key，每个key对应的是tensor(batchsize,space)    如o_0 : tensor(256*19)
         o, u, o_next = [], [], []  # 用来装每个agent经验中的各项
         r = transitions['r_%d' % agent_id]  # 训练时只需要自己的reward

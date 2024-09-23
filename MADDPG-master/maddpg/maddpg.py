@@ -1,10 +1,10 @@
 import torch
 import os
-from .actor_critic import Actor, Critic
+from .actor_critic import Actor, Critic, Wrapper
 
 
 class MADDPG:
-    def __init__(self, args, agent_id, iterations):  # 因为不同的agent的obs、act维度可能不一样，所以神经网络不同,需要agent_id来区分
+    def __init__(self, args, agent_id, iterations, writer):  # 因为不同的agent的obs、act维度可能不一样，所以神经网络不同,需要agent_id来区分
         self.args = args
         self.agent_id = agent_id
         self.train_step = 0
@@ -13,6 +13,8 @@ class MADDPG:
         # create the network
         self.actor_network = Actor(args, agent_id).to(self.device)
         self.critic_network = Critic(args).to(self.device)
+        # using for network architecture
+        self.Wrapper = Wrapper(args, agent_id).to(self.device)
         self.evaluate = self.args.evaluate
         # build up the target network
         self.actor_target_network = Actor(args, agent_id).to(self.device)
@@ -26,6 +28,8 @@ class MADDPG:
         self.actor_optim = torch.optim.Adam(self.actor_network.parameters(), lr=self.args.lr_actor)
         self.critic_optim = torch.optim.Adam(self.critic_network.parameters(), lr=self.args.lr_critic)
 
+        # TensorboardWriter
+        self.writer = writer
         # create the dict for store the model
         if not os.path.exists(self.args.save_dir):
             os.mkdir(self.args.save_dir)
@@ -94,14 +98,18 @@ class MADDPG:
         # the actor loss
         # 重新选择联合动作中当前agent的动作，其他agent的动作不变
         u[self.agent_id] = self.actor_network(o[self.agent_id])
+
         actor_loss = - self.critic_network(o, u).mean()
         # if self.agent_id == 0:
         #     print('critic_loss is {}, actor_loss is {}'.format(critic_loss, actor_loss))
         # update the network
-        # TODO: Test
+        # TODO: Test, recording actorloss and critic loss
         # print(r.device)  # 确认奖励张量在GPU上
         # print(q_value.device)  # 确认Q值计算在GPU上
         # print(actor_loss.device)  # 确认Actor损失在GPU上
+
+        self.writer.tensorboard_scalardata_collect(actor_loss, self.writer.time_step, f"actor_loss_{self.agent_id}_")
+        self.writer.tensorboard_scalardata_collect(critic_loss, self.writer.time_step, f"critic_loss_{self.agent_id}_")
 
 
         self.actor_optim.zero_grad()  # 每次更新前，必须将所要更新梯度的网络梯度置0，因为梯度是累积的
@@ -111,6 +119,9 @@ class MADDPG:
         self.critic_optim.zero_grad()
         critic_loss.backward()
         self.critic_optim.step()
+        # TODO:记录参数变化
+        self.writer.tensorboard_histogram_collect(self.actor_network, self.critic_network, self.writer.time_step, self.agent_id)
+
 
         self._soft_update_target_network()
         if self.train_step > 0 and self.train_step % self.args.save_rate == 0:

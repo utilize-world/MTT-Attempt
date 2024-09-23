@@ -59,10 +59,10 @@ def make_env(args):
         action_shape.append(content)
     args.action_shape = action_shape[:args.n_agents]  # 每一维代表该agent的act维度
     args.action_shape = [2 for i in range(args.n_agents)]  # 这里直接设置动作维度为1，所以前面的可能没用了
-    args.high_action = world.Na
-    args.low_action = 1
+    args.high_action = 0.1
+    args.low_action = -0.1
     # args.high_action = world.Na       # directly define the max_accelaration
-    # args.low_action = -world.Na
+    # args.low_action = 1
     return env, args
 
 
@@ -162,3 +162,37 @@ def cal_dis(pos1, pos2):
 
 def cal_relative_pos(pos1, pos2):
     return pos2 - pos1
+
+# 检查梯度更新状态
+def print_gradients(model):
+    for name, param in model.named_parameters():
+        if param.grad is not None:
+            print(f"{name} gradient: {param.grad.data}")
+        else:
+            print(f"{name} gradient: None")
+
+
+# 在每个episode结束时都要归零，
+
+# 然后是检查，如果连续二十个时间步，目标都被观察到，就结束，认为该episode完成，
+def is_success(current_cumulate_tracking_timestep, judge_value=5):
+    if current_cumulate_tracking_timestep >= judge_value:
+        return True
+    else:
+        return False
+# 在测试方面才有成功率，成功率可以定义为完成episode的个数/测试episdoe的个数
+
+def cal_success_rate(success_epi, total_epi):
+    return success_epi/total_epi
+
+
+def limit_vel(current_value, limited_value):
+    if current_value >= limited_value:
+        current_value = limited_value
+    if current_value <= -limited_value:
+        current_value = -limited_value
+    return current_value
+
+def all_ones(lst):
+    return all(x == 1 for x in lst)
+# 如果一个列表中都为1则返回ture否则false

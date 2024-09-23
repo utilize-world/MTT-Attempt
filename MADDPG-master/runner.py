@@ -5,9 +5,14 @@ import torch
 import os
 import numpy as np
 import matplotlib.pyplot as plt
-from utils import begin_debug
 
-from common.utils import check_agent_bound, check_agent_near_bound, ezDrawAPic
+from torch.utils.data import DataLoader
+from AttentionModule import dataloader
+import tensor_b
+# using for tensorboard
+from tensor_b import TensorboardWriter, MTT_tensorboard
+
+from common.utils import check_agent_bound, check_agent_near_bound, ezDrawAPic, is_success, all_ones
 from maddpg.maddpg import MADDPG
 from MASAC.MASAC import MASAC
 from MAPPO.MAPPO import MAPPO
@@ -26,13 +31,19 @@ class Runner:
         self.env = env
         self.number = number
         self.algorithm = algorithm
-        self.agents = self._init_agents(self.algorithm)
+
         self.buffer = Buffer(args)
         self.dataloader = None
         self.save_path = self.args.save_dir + '/' + self.args.scenario_name + '/' + self.algorithm
         ## 规定存放csv的路径位置以及存放fig的位置
         self.csv_save_dir = self.args.csv_save_dir + '/' + self.args.scenario_name + '/' + self.algorithm
         self.fig_save_dir = self.args.fig_save_dir + '/' + self.args.scenario_name + '/' + self.algorithm
+
+        self.writer = TensorboardWriter(self.args.tensorboard_dir)
+        self.writer.create_writer()
+        if args.writer==False:
+            self.writer.disable_write() # 不使用writer，加快速度
+        self.agents = self._init_agents(self.algorithm)
 
         if not os.path.exists(self.save_path):
             os.makedirs(self.save_path)
@@ -45,7 +56,10 @@ class Runner:
         agents = []
         if algorithms == "MADDPG":
             for i in range(self.args.n_agents):
-                policy = MADDPG(self.args, i, self.number)
+                policy = MADDPG(self.args, i, self.number, self.writer)
+                Wrapper = policy.Wrapper
+                self.writer.tensorboard_model_collect(Wrapper, algorithms)
+
                 agent = Agent(i, self.args, policy, algorithms)
                 agents.append(agent)
         elif algorithms == "MASAC":
@@ -54,7 +68,9 @@ class Runner:
                 agent = Agent(i, self.args, policy, algorithms)
                 agents.append(agent)
         elif algorithms == "MLGA2C":
-            policy = MLGA2C(self.args)  # 采用共享参数的方式
+            policy = MLGA2C(self.args, self.writer)  # 采用共享参数的方式
+            Wrapper = policy.Wrapper
+            self.writer.tensorboard_model_collect(Wrapper, algorithms)
             for i in range(self.args.n_agents):
                 agent = Agent(i, self.args, policy, algorithms)
                 agents.append(agent)
@@ -74,6 +90,8 @@ class Runner:
         done_list = []
         rewards_epi = [0] * len(self.agents)  # 用来计算每个agent对应的reward_epi,individual，所以有多少个agent就有多少个
         rewards_epi_list = []
+        success_epi = 0 # 记录多少episode成功了
+        epi_num = 0 # 记录当前epi数
         out_symbol = False
         critical_done = False
         if self.algorithm == "MAPPO":
@@ -95,13 +113,15 @@ class Runner:
 
         s = self.env.reset()
         current_time_step = 0
+        cumulate_success_step = 0
         for time_step in tqdm(range(self.args.time_steps)):
             # reset the environment
             # debug
             # begin_debug(time_step % 70000 == 0 and time_step > 0)
-
+            # writer可以向MADDPG类传入timestep信息
+            self.writer.get_timestep(time_step)
             # if (current_time_step % self.episode_limit == 0) or not (False in done) or critical_done:
-            if (current_time_step % self.episode_limit == 0) or critical_done:
+            if (current_time_step % self.episode_limit == 0) or critical_done or is_success(cumulate_success_step):
                 # 这里就是一个episode结束的位置
                 # TODO: epi data processing
                 s = self.env.reset()
@@ -121,10 +141,14 @@ class Runner:
                 rewards_epi_list.append(rewards_epi)  # 这里的形式应该是[[r1t1,r2t1,r3t1..],[r1t2,r1t2]...]
                 # 其中ti就代表了第几个episode的reward和。
                 rewards_epi = [0] * len(self.agents)
-
+                epi_num += 1
                 rewards_list.append(rewards)
+                # TODO:collect epi reward
+                self.writer.tensorboard_scalardata_collect(rewards, epi_num, "episode_")
+
                 rewards_list = rewards_list[-50000:]  # 取最后2000个训练episode
                 rewards = 0
+                cumulate_success_step = 0
 
             u = []
             actions = []
@@ -150,15 +174,18 @@ class Runner:
 
             # 这地方新加的，如果全部出界，则结束当前episode，并给予惩罚
             critical_done = check_agent_bound(self.env.world.agents, self.env.world.bound, 0)
+            # TODO: Done check
             done_list.append(done)
+            if all_ones(done):
+                cumulate_success_step += 1
+            else:
+                cumulate_success_step = 0
             # if check_agent_near_bound(self.env.world.agents, self.env.world.bound, 0):
             #     r = [x - 1 for x in r]
-            # if critical_done:
-            #     # 如果全出界了，直接每人-100
-            #     r = [x - 10 for x in r]
+            if critical_done:
+                # 如果全出界了，直接每人-100
+                r = [x - 10 for x in r]
             ################### 单个的时候就不考虑这个奖励了
-            if not (False in done):
-                r = [x + 5 for x in r]
             # TODO: 这个位置实际就是对每个timestep进行的数据处理
 
             rewards_epi = [x + y for x, y in zip(rewards_epi, r)]  # 将每个agent的reward都单独处理，指叠加，为了计算
@@ -247,18 +274,22 @@ class Runner:
             self.noise = max(0.05, self.noise - 0.0000005)
             self.epsilon = max(0.05, self.epsilon - 0.00005)
             np.save(self.save_path + '/returns.pkl', returns)
+        self.writer.close_writer()
         rewards_epi = rewards_list[1:]
         return rewards_epi
 
     def evaluate(self):
         returns = []
         self.env.world.train = False  # 将模式调整为执行
+        success_epi = 0
         if self.args.evaluate:
             self.agents = self._init_agents(self.algorithm)
         for episode in range(self.args.evaluate_episodes):
             # reset the environment
             s = self.env.reset()
             rewards = 0
+            current_success_timestep = 0
+
             for time_step in range(self.args.evaluate_episode_len):
                 self.env.render()
                 actions = []
@@ -270,20 +301,29 @@ class Runner:
                 #     actions.append([0, np.random.rand() * 2 - 1, 0, np.random.rand() * 2 - 1, 0])
                 s_next, r, done, info = self.env.step(actions)
                 critical_done = check_agent_bound(self.env.world.agents, self.env.world.bound, 0)
-
-                if check_agent_near_bound(self.env.world.agents, self.env.world.bound, 0):
-                    r = [x - 1 for x in r]
-                if critical_done:
-                    # 如果全出界了，直接每人-100
-                    r = [x - 10 for x in r]
-                ################### 单个的时候就不考虑这个奖励了
-                if not (False in done):
-                    r = [x + 5 for x in r]
+                if all_ones(done):
+                    current_success_timestep += 1
+                else:
+                    current_success_timestep = 0
+                if is_success(current_success_timestep):
+                    break
                 # rewards += r[0]     # ？？为什么是r[0],是因为采用shared reward？
                 rewards += sum(r) / len(self.agents)
                 s = s_next
                 if critical_done:
                     break
             returns.append(rewards)
+            if is_success(current_success_timestep):
+                success_epi += 1
             print('Returns is', rewards)
+        print("The success rate = ", success_epi / self.args.evaluate_episodes) # 计算成功率
         return sum(returns) / self.args.evaluate_episodes
+
+    def _train_step(self, batch):
+        for key in batch.keys():
+            batch[key] = batch[key].cuda()
+
+        for i, agent in enumerate(self.agents):
+            other_agents = self.agents.copy()
+            other_agents.remove(agent)
+            agent.learn(batch, other_agents, self.algorithm)

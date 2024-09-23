@@ -1,13 +1,13 @@
 import torch
 import os
-from .actor_critic import Actor, Q_net
+from .actor_critic import Actor, Q_net, Wrapper
 import einops
 import torch.nn.functional as F
-
+from utils import print_gradients
 #torch.autograd.set_detect_anomaly(True)
 
 class MLGA2C:
-    def __init__(self, args):
+    def __init__(self, args, writer):
         self.args = args
         self.train_step = 0
         self.device = torch.device("cuda" if torch.cuda.is_available() and args.cuda else "cpu")
@@ -25,9 +25,9 @@ class MLGA2C:
         self.qf1_t.load_state_dict(self.qf1.state_dict())
         self.qf2_t.load_state_dict(self.qf2.state_dict())
         self.q_optimizer = torch.optim.Adam(list(self.qf1.parameters()) + list(self.qf2.parameters()), lr=self.q_lr)
-
+        self.Wrapper = Wrapper(args).to(self.device)
         self.p_lr = 3e-4
-
+        self.writer = writer
         # self.actor_t = Actor(args, agent_id)
         # self.alpha = args.alpha
         ## auto
@@ -210,10 +210,15 @@ class MLGA2C:
             actor_loss = ((self.alpha * log_pi) - min_qf_pi).mean()
 
             #actor_loss = torch.mean(state_log_pi_i)
-
+            # # TODO:check loss
+            # print(f'actor loss = {actor_loss}')
             self.actor_optimizer.zero_grad()
             actor_loss.backward()
 
+            self.writer.tensorboard_scalardata_collect(actor_loss, self.writer.time_step,
+                                                       f"actor_loss_{agent_id}_")
+            self.writer.tensorboard_scalardata_collect(qf_loss, self.writer.time_step,
+                                                       f"critic_loss_{agent_id}_")
             # for param in self.policy.parameters():
             #     if param.grad is None:
             #         print(f'Parameter actor:  - Gradient not computed')
@@ -226,7 +231,8 @@ class MLGA2C:
             #         print(f'Gradient min: {param.grad.min().item()}')  # 输出梯度最小值
             #         print('-----------------------')
             self.actor_optimizer.step()
-
+            # TODO: check update?
+            # print_gradients(self.policy)
             ## autotuned alpha
             with torch.no_grad():
                 state_log_pi = []
@@ -249,3 +255,5 @@ class MLGA2C:
 
         if self.train_step > 0 and self.train_step % self.args.save_rate == 0:
             self.save_model(self.train_step, agent_id)
+
+        return qf_loss, actor_loss
