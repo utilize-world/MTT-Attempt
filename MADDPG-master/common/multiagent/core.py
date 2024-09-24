@@ -210,7 +210,7 @@ class World(object):  # 最关键的
         self.comm_range = 0.5
         # 边
         self.bound = 2
-        self.rebound = 0.08
+        self.rebound = 0.04
         self.dim_ac = 6
         self.Na = 20
         # 定义是否在训练，这与状态有关

@@ -4,6 +4,9 @@ import functools
 import matplotlib.pyplot as plt
 import random
 
+from functools import lru_cache  # 缓存管理
+import itertools
+
 
 def store_args(method):
     """Stores provided method args as instance attributes.
@@ -160,8 +163,10 @@ def cal_dis(pos1, pos2):
     dis = np.sqrt(np.square(pos1[0] - pos2[0]) + np.square(pos1[1] - pos2[1]))
     return dis
 
+
 def cal_relative_pos(pos1, pos2):
     return pos2 - pos1
+
 
 # 检查梯度更新状态
 def print_gradients(model):
@@ -175,15 +180,17 @@ def print_gradients(model):
 # 在每个episode结束时都要归零，
 
 # 然后是检查，如果连续二十个时间步，目标都被观察到，就结束，认为该episode完成，
-def is_success(current_cumulate_tracking_timestep, judge_value=5):
+def is_success(current_cumulate_tracking_timestep, judge_value=20):
     if current_cumulate_tracking_timestep >= judge_value:
         return True
     else:
         return False
+
+
 # 在测试方面才有成功率，成功率可以定义为完成episode的个数/测试episdoe的个数
 
 def cal_success_rate(success_epi, total_epi):
-    return success_epi/total_epi
+    return success_epi / total_epi
 
 
 def limit_vel(current_value, limited_value):
@@ -193,6 +200,62 @@ def limit_vel(current_value, limited_value):
         current_value = -limited_value
     return current_value
 
+
 def all_ones(lst):
     return all(x == 1 for x in lst)
+
+def normNegetive(lst):
+    # -1,1 normalization
+    return 2 * (lst - min(lst)) / (max(lst) - min(lst)) - 1
+
+
 # 如果一个列表中都为1则返回ture否则false
+
+from math import factorial
+
+# 缓存的目的是为了让相同输入情况下不再重新计算
+@lru_cache
+def calculate_shapley_value(n, v):
+    """
+    计算n个参与者的Shapley值。
+
+    参数:
+    n (int): 参与者的总数。
+    v (function): 特征函数，接受一个联盟的集合，返回该联盟的收益。
+
+    返回:
+    list: 包含每个参与者Shapley值的列表。
+    """
+    shapley_values = [0] * n
+
+    for i in range(n):
+        # 遍历每个可能的子集大小 r (从0到n-1)
+        for r in range(n):
+            for S in itertools.combinations(range(n), r):
+                if i not in S:
+                    S_with_i = S + (i,)
+                    # Shapley值的权重
+                    weight = factorial(len(S)) * factorial(n - len(S) - 1) / factorial(n)
+                    # 计算边际贡献
+                    marginal_contribution = v(S_with_i) - v(S)
+                    shapley_values[i] += weight * marginal_contribution
+
+    return shapley_values
+
+
+# 示例特征函数
+def v(S, array):
+    """
+    计算联盟S的收益（返回平均值）。
+
+    参数:
+    S (tuple): 联盟的集合。
+    array (np.array): 二维数组。
+
+    返回:
+    float: 联盟S的收益（平均值）。
+    """
+    if len(S) == 0:
+        return 0
+    # 对联盟S中的每一行求和，并返回总和的平均值
+    return - array[list(S)].sum() / len(S)

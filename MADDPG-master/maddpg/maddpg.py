@@ -8,6 +8,7 @@ class MADDPG:
         self.args = args
         self.agent_id = agent_id
         self.train_step = 0
+        self.Algorithm = "MADDPG"
         self.device = torch.device("cuda" if torch.cuda.is_available() and args.cuda else "cpu")
         self.iterations = iterations  # 代表第几次训练任务
         # create the network

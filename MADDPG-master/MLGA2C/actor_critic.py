@@ -3,8 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 
-import GlobalAtt
-import Local
+
 from GlobalAtt import GlobalAttention
 from Local import LocalAttention
 

@@ -51,7 +51,7 @@ def get_args():
     parser.add_argument("--tensorboard-dir", type=str, default='tensorboard_data',help="directory in which stores the data using in tensorboard")
 
     # Evaluate
-    parser.add_argument("--evaluate-episodes", type=int, default=100, help="number of episodes for evaluating")
+    parser.add_argument("--evaluate-episodes", type=int, default=10, help="number of episodes for evaluating")
     parser.add_argument("--evaluate-episode-len", type=int, default=200, help="length of episodes for evaluating")
     parser.add_argument("--evaluate", type=bool, default=False, help="whether to evaluate the model")
     parser.add_argument("--evaluate-rate", type=int, default=10000, help="how often to evaluate model")

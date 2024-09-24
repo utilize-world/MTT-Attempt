@@ -62,6 +62,14 @@ class Runner:
 
                 agent = Agent(i, self.args, policy, algorithms)
                 agents.append(agent)
+
+        elif algorithms == "MADDPG_ATT":
+            policy = MLGA2C(self.args, self.writer)  # 采用共享参数的方式
+            Wrapper = policy.Wrapper
+            self.writer.tensorboard_model_collect(Wrapper, algorithms)
+            for i in range(self.args.n_agents):
+                agent = Agent(i, self.args, policy, algorithms)
+                agents.append(agent)
         elif algorithms == "MASAC":
             policy = MASAC(self.args)  # 采用共享参数的方式
             for i in range(self.args.n_agents):
@@ -202,7 +210,10 @@ class Runner:
 
                     rewards_mappo_timestep[agent][current_time_step] = r[agent]
                 s = s_next
-            if self.algorithm == "MADDPG" or self.algorithm == "MASAC" or self.algorithm == "MLGA2C":
+            if self.algorithm == "MADDPG" \
+                    or self.algorithm == "MASAC" \
+                    or self.algorithm == "MLGA2C" \
+                    or self.algorithm == "MADDPG_ATT":
                 self.buffer.store_episode(s[:self.args.n_agents], u, r[:self.args.n_agents],
                                           s_next[:self.args.n_agents])
                 s = s_next

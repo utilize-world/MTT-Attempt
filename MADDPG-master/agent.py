@@ -73,5 +73,7 @@ class Agent:
             self.policy.train(transitions, self.agent_id)
         elif algorithm == "MAPPO":
             self.policy.train(obs, next_obs, values, dones, actions, logprobs, rewards, nextdone, self.agent_id, time_steps)
+        elif algorithm == "MADDPG_ATT":
+            self.policy.train(transitions, other_agents)
         else:
             print("error arguments input")

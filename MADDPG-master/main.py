@@ -7,7 +7,7 @@ import torch
 from draw_plt import collect_data_and_save_drawings
 from utils import clear_folder
 seed = 0
-algorithm = "MLGA2C"
+algorithm = "MADDPG"
 import os
 
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
