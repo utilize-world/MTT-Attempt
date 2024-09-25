@@ -5,7 +5,7 @@ import math
 from utils import find_index  # 这个函数用来奖励的计算，防止多个UAV追踪同一目标
 from utils import cal_dis, cal_relative_pos, calculate_shapley_value, v, normNegetive
 import sys
-
+import torch.nn.functional as F
 sys.path.append('../')
 
 
@@ -157,8 +157,8 @@ class Scenario(BaseScenario):
         dis_map = world.distance_cal_target()  # 得到一个所有UAV相对所有target的距离矩阵
         dis_reward = - dis_weight * dis_map.sum() / len(dis_map) # 平均
 
-        # shapleyReward = normNegetive(calculate_shapley_value(len(world.agents), lambda S: v(S, dis_map)))[agent_index]
-        shapleyReward = calculate_shapley_value(len(world.agents), lambda S: v(S, dis_map))[agent_index]
+        shapleyReward = normNegetive(calculate_shapley_value(len(world.agents), lambda S: v(S, dis_map)))[agent_index]
+        # shapleyReward = calculate_shapley_value(len(world.agents), lambda S: v(S, dis_map))[agent_index]
         #     -------------------------collision reward-----------
         distance_uavs_map = world.distance_cal_agent()  # 这样做每次都要调用一次全局的表，实在是有点浪费，但是懒得改了
         if (0 < distance <= agent.safe_range for distance in distance_uavs_map[agent_index]):
@@ -176,7 +176,7 @@ class Scenario(BaseScenario):
         #
         # SE_reward = (ave_dis - agent.safe_range)/(world.SE_dis - agent.safe_range)
         # return dis_reward + collision_reward + time_reward
-        return shapleyReward + collision_reward + time_reward
+        return dis_reward + shapleyReward + collision_reward + time_reward
 
     # 定义单个agent的观察空间,静态方法
     def observation(self, agent, world):

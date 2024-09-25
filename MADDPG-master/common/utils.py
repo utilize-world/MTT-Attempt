@@ -205,8 +205,9 @@ def all_ones(lst):
     return all(x == 1 for x in lst)
 
 def normNegetive(lst):
-    # -1,1 normalization
-    return 2 * (lst - min(lst)) / (max(lst) - min(lst)) - 1
+    """Compute softmax values for each sets of scores in x."""
+    e_x = np.exp(lst - np.max(lst))  # Subtract max(x) for numerical stability
+    return e_x / e_x.sum()
 
 
 # 如果一个列表中都为1则返回ture否则false
