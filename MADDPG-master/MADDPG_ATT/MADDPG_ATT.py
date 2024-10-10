@@ -4,8 +4,8 @@ from .actor_critic import Actor, Q_net, Wrapper
 
 
 
-class MADDPG:
-    def __init__(self, args, agent_id, iterations, writer):  # 因为不同的agent的obs、act维度可能不一样，所以神经网络不同,需要agent_id来区分
+class MADDPG_ATT:
+    def __init__(self, args, iterations, writer, agent_id=0):  # 因为不同的agent的obs、act维度可能不一样，所以神经网络不同,需要agent_id来区分
         self.args = args
         self.agent_id = agent_id
         self.train_step = 0

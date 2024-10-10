@@ -7,7 +7,7 @@ import torch
 from draw_plt import collect_data_and_save_drawings
 from utils import clear_folder
 seed = 0
-algorithm = "MADDPG"
+algorithm = "MADDPG_ATT"
 import os
 
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
@@ -31,7 +31,7 @@ if __name__ == '__main__':
     clear_folder(runner.save_path)
 
     if args.evaluate:
-        returns = runner.evaluate()
+        returns, _ = runner.evaluate()
         print('Average returns is', returns)
     else:
         for i in range(1, index + 1):

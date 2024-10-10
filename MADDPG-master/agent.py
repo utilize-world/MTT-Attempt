@@ -13,9 +13,9 @@ class Agent:
         self.algorithm = algorithm
 
     def select_action(self, o, noise_rate, epsilon, global_info=None):
-        if np.random.uniform() < epsilon and self.algorithm == "MADDPG":
+        if np.random.uniform() < epsilon and (self.algorithm == "MADDPG" or self.algorithm == "MADDPG_ATT"):
             u = np.random.uniform(self.args.low_action, self.args.high_action, self.args.action_shape[self.agent_id])
-        elif self.algorithm == "MADDPG":
+        elif self.algorithm == "MADDPG" or self.algorithm == "MADDPG_ATT":
             inputs = torch.tensor(o, dtype=torch.float32).unsqueeze(0).cuda()  # 给第0位添加一维向量，本来o是(18,)，现在是tensor(1,observation shape)
             pi = self.policy.actor_network(inputs).squeeze(0)   # 压缩第0位的一维向量,这里policy的输出是tensor(64,action_shape),最后变成(1,action_shape)
             # print('{} : {}'.format(self.name, pi))

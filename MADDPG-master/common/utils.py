@@ -233,6 +233,7 @@ def calculate_shapley_value(n, v):
         # 遍历每个可能的子集大小 r (从0到n-1)
         for r in range(n):
             for S in itertools.combinations(range(n), r):
+                # 0到n-1所有可能的组合，r是多少个组合在一起
                 if i not in S:
                     S_with_i = S + (i,)
                     # Shapley值的权重

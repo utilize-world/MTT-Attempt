@@ -1,3 +1,5 @@
+from multipledispatch import dispatch
+
 import torch
 import os
 from .actor_critic import Actor, Critic, Wrapper
@@ -46,14 +48,31 @@ class MADDPG:
         # TODO: load model !!!!
         id = 1
         if os.path.exists(self.model_path + '/1_actor_params.pkl') and self.evaluate == True:
-            self.actor_network.load_state_dict(
-                torch.load(self.model_path + '/' + str(self.iterations+1) + '_actor_params.pkl'))
-            self.critic_network.load_state_dict(
-                torch.load(self.model_path + '/' + str(self.iterations+1) + '_critic_params.pkl'))
-            print('Agent {} successfully loaded actor_network: {}'.format(self.agent_id,
-                                                                          self.model_path + '/_actor_params.pkl'))
-            print('Agent {} successfully loaded critic_network: {}'.format(self.agent_id,
-                                                                           self.model_path + '/_critic_params.pkl'))
+            self.load_model()
+
+    @dispatch()
+    def load_model(self):
+        self.actor_network.load_state_dict(
+            torch.load(self.model_path + '/' + str(self.iterations + 1) + '_actor_params.pkl'))
+        self.critic_network.load_state_dict(
+            torch.load(self.model_path + '/' + str(self.iterations + 1) + '_critic_params.pkl'))
+        print('Agent {} successfully loaded actor_network: {}'.format(self.agent_id,
+                                                                      self.model_path + '/_actor_params.pkl'))
+        print('Agent {} successfully loaded critic_network: {}'.format(self.agent_id,
+                                                                       self.model_path + '/_critic_params.pkl'))
+
+    @dispatch(int)
+    def load_model(self, id):
+        self.actor_network.load_state_dict(
+            torch.load(self.model_path + '/' + str(id + 1) + '_actor_params.pkl'))
+        self.critic_network.load_state_dict(
+            torch.load(self.model_path + '/' + str(id + 1) + '_critic_params.pkl'))
+        print('Agent {} successfully loaded actor_network: {}'.format(self.agent_id,
+                                                                      self.model_path + '/' + str(
+                                                                          id + 1) + '/_actor_params.pkl'))
+        print('Agent {} successfully loaded critic_network: {}'.format(self.agent_id,
+                                                                       self.model_path + '/' + str(
+                                                                           id + 1) + '/_critic_params.pkl'))
 
     # soft update
     def _soft_update_target_network(self):
@@ -78,7 +97,7 @@ class MADDPG:
         u_next = []
 
         with torch.no_grad():
-                # 得到下一个状态对应的动作
+            # 得到下一个状态对应的动作
             index = 0
             for agent_id in range(self.args.n_agents):
                 if agent_id == self.agent_id:
@@ -90,7 +109,6 @@ class MADDPG:
             q_next = self.critic_target_network(o_next, u_next).detach()
 
             target_q = (r.unsqueeze(1) + self.args.gamma * q_next).detach()
-
 
             # the q loss
         q_value = self.critic_network(o, u)
@@ -112,7 +130,6 @@ class MADDPG:
         self.writer.tensorboard_scalardata_collect(actor_loss, self.writer.time_step, f"actor_loss_{self.agent_id}_")
         self.writer.tensorboard_scalardata_collect(critic_loss, self.writer.time_step, f"critic_loss_{self.agent_id}_")
 
-
         self.actor_optim.zero_grad()  # 每次更新前，必须将所要更新梯度的网络梯度置0，因为梯度是累积的
         # 在通过backward计算完梯度后(产生梯度)，经过step来通过梯度下降法更新参数的值
         actor_loss.backward()
@@ -121,8 +138,8 @@ class MADDPG:
         critic_loss.backward()
         self.critic_optim.step()
         # TODO:记录参数变化
-        self.writer.tensorboard_histogram_collect(self.actor_network, self.critic_network, self.writer.time_step, self.agent_id)
-
+        self.writer.tensorboard_histogram_collect(self.actor_network, self.critic_network, self.writer.time_step,
+                                                  self.agent_id)
 
         self._soft_update_target_network()
         if self.train_step > 0 and self.train_step % self.args.save_rate == 0:
@@ -142,7 +159,6 @@ class MADDPG:
         # torch.save(self.critic_network.state_dict(), model_path + '/' + num + '_critic_params.pkl')
         torch.save(self.actor_network.state_dict(), model_path + '/' + str(iterations) + '_actor_params.pkl')
         torch.save(self.critic_network.state_dict(), model_path + '/' + str(iterations) + '_critic_params.pkl')
-
 
     def set_mode(self, signal):
         # 将MADDPG设置为评估模式或者是训练模式, 0是评估， 其他是训练

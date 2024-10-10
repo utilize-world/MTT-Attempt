@@ -17,6 +17,7 @@ from maddpg.maddpg import MADDPG
 from MASAC.MASAC import MASAC
 from MAPPO.MAPPO import MAPPO
 from MLGA2C.MLGA2C import MLGA2C
+from MADDPG_ATT.MADDPG_ATT import MADDPG_ATT
 
 class Runner:
     """
@@ -53,10 +54,11 @@ class Runner:
             os.makedirs(self.fig_save_dir)
 
     def _init_agents(self, algorithms):
+
         agents = []
         if algorithms == "MADDPG":
             for i in range(self.args.n_agents):
-                policy = MADDPG(self.args, i, self.number, self.writer)
+                policy = MADDPG(self.args, i, iterations=self.number, writer=self.writer)
                 Wrapper = policy.Wrapper
                 self.writer.tensorboard_model_collect(Wrapper, algorithms)
 
@@ -64,7 +66,7 @@ class Runner:
                 agents.append(agent)
 
         elif algorithms == "MADDPG_ATT":
-            policy = MLGA2C(self.args, self.writer)  # 采用共享参数的方式
+            policy = MADDPG_ATT(self.args, self.number, self.writer)  # 采用共享参数的方式
             Wrapper = policy.Wrapper
             self.writer.tensorboard_model_collect(Wrapper, algorithms)
             for i in range(self.args.n_agents):
@@ -91,6 +93,7 @@ class Runner:
 
     def run(self):
         returns = []
+        success_rate = []
         rewards = 0
         train_returns = []
         done = False
@@ -102,6 +105,8 @@ class Runner:
         epi_num = 0 # 记录当前epi数
         out_symbol = False
         critical_done = False
+
+
         if self.algorithm == "MAPPO":
             device = torch.device("cuda" if torch.cuda.is_available() and self.args.cuda else "cpu")
             u_joint = torch.zeros((len(self.agents), self.args.max_episode_len) + (1, self.args.action_shape[0])).to(
@@ -243,27 +248,35 @@ class Runner:
             # TODO：画图部分，其实这里有待考究，因为每个episode的时间步都已经不一样了，按道理每次画图检查是根据episode数来
             #  计算，而不是根据timestep数来计算，即evaluate_rate(这个值实际上是时间步有关的值）
             if time_step > 0 and time_step % self.args.evaluate_rate == 0:
-                returns.append(self.evaluate())
+                returns.append(self.evaluate()[0])
+                success_rate.append(self.evaluate()[1])
 
-                plt.figure(figsize=(20, 10))
 
-                plt.subplot(3, 1, 1)
+                plt.figure(figsize=(20, 20))
+
+                plt.subplot(2, 2, 1)
                 plt.plot(range(len(train_returns_clip)), train_returns_clip)
                 plt.xlabel('time steps ')
                 plt.ylabel('instant training reward')
                 plt.title('training reward(average)')
 
-                plt.subplot(3, 1, 2)
+                plt.subplot(2, 2, 2)
                 plt.plot(range(len(returns)), returns)
-                plt.xlabel('episode * ' + str(self.args.evaluate_rate / self.episode_limit))
+                plt.xlabel('episode')
                 plt.ylabel('average returns')
                 plt.title('evaluating average returns')
 
-                plt.subplot(3, 1, 3)
+                plt.subplot(2, 2, 3)
                 plt.plot(range(len(rewards_list)), rewards_list)
                 plt.xlabel('training episode')
                 plt.ylabel('average epi reward')
                 plt.title('training episode average rewards')
+
+                plt.subplot(2, 2, 4)
+                plt.plot(range(len(success_rate)), success_rate)
+                plt.xlabel('time_step * test_freq')
+                plt.ylabel('success_rate')
+                plt.title('success_rate in training')
                 plt.savefig(self.save_path + '/plt' + str(self.number) + '.png', format='png')
 
                 plt.close()  # 不用每次都跳出来
@@ -328,7 +341,7 @@ class Runner:
                 success_epi += 1
             print('Returns is', rewards)
         print("The success rate = ", success_epi / self.args.evaluate_episodes) # 计算成功率
-        return sum(returns) / self.args.evaluate_episodes
+        return sum(returns) / self.args.evaluate_episodes, float(success_epi / self.args.evaluate_episodes)
 
     def _train_step(self, batch):
         for key in batch.keys():
