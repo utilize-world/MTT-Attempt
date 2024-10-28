@@ -223,10 +223,13 @@ def calculate_shapley_value(n, v):
     参数:
     n (int): 参与者的总数。
     v (function): 特征函数，接受一个联盟的集合，返回该联盟的收益。
+    dis_u_t: n*m[][] uav和target的距离数组
+    dis_u_u: n*n[][] uav和uav的距离
 
     返回:
     list: 包含每个参与者Shapley值的列表。
     """
+    # 按道理说，每次shapley计算时应当是当前通信范围内
     shapley_values = [0] * n
 
     for i in range(n):
@@ -246,7 +249,7 @@ def calculate_shapley_value(n, v):
 
 
 # 示例特征函数
-def v(S, array):
+def v(S, array, dis_UAV_in_comm_index, bound):
     """
     计算联盟S的收益（返回平均值）。
 
@@ -260,4 +263,14 @@ def v(S, array):
     if len(S) == 0:
         return 0
     # 对联盟S中的每一行求和，并返回总和的平均值
-    return - array[list(S)].sum() / len(S)
+    else:
+        value_s = 0
+        for eles in S:
+            for ele in array[dis_UAV_in_comm_index[eles]]:
+                if ele < bound:
+                    value_s -= ele
+            # for dis in u_u_map[eles]:
+            #     if dis < bound:
+            #         value_s -= 1
+
+    return value_s / len(S)

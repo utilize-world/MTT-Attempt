@@ -108,6 +108,7 @@ class MultiAgentEnv(gym.Env):
         self.world.env_step()
         # record observation for each agent
         for i, agent in enumerate(self.agents):
+            # 这里更新agent自身的obs
             obs_n.append(self._get_obs(agent))
             reward_n.append(self._get_reward(agent, i))
             done_n.append(self._get_done())

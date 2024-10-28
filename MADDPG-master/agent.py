@@ -3,7 +3,7 @@ import torch
 import os
 from maddpg.maddpg import MADDPG
 from MASAC.MASAC import MASAC
-
+from collections import deque
 
 class Agent:
     def __init__(self, agent_id, args, policy, algorithm):
@@ -11,9 +11,11 @@ class Agent:
         self.agent_id = agent_id
         self.policy = policy
         self.algorithm = algorithm
+        self.memory = deque(maxlen=10)
+
 
     def select_action(self, o, noise_rate, epsilon, global_info=None):
-        if np.random.uniform() < epsilon and (self.algorithm == "MADDPG" or self.algorithm == "MADDPG_ATT"):
+        if np.random.uniform() < epsilon and (self.algorithm == "MADDPG" or self.algorithm == "MADDPG_ATT" or self.algorithm == "MADDPG_RNN"):
             u = np.random.uniform(self.args.low_action, self.args.high_action, self.args.action_shape[self.agent_id])
         elif self.algorithm == "MADDPG" or self.algorithm == "MADDPG_ATT":
             inputs = torch.tensor(o, dtype=torch.float32).unsqueeze(0).cuda()  # 给第0位添加一维向量，本来o是(18,)，现在是tensor(1,observation shape)
@@ -27,9 +29,20 @@ class Agent:
             # np.clip(a, a_min, a_max, out=None) 限制其值在amin，amax之间
             # TODO:下面这一行去掉了，这是因为采用连续动作的缘故，如果使用0到max这种格式，应该加上下面这一行, MASAC那里同理
             # u += np.float((self.args.high_action-self.args.low_action)/2)     # 要限制其动作在0到high_action内
-
+        elif self.algorithm == "MADDPG_RNN":
+            inputs = torch.tensor(o, dtype=torch.float32).unsqueeze(
+                0).cuda()  # 给第0位添加一维向量，本来o是(10,10)，现在是tensor(1,10,observation shape)
+            pi = self.policy.actor_network(inputs)[0].squeeze(
+                0)  # 压缩第0位的一维向量,这里policy的输出是tensor(64,action_shape),最后变成(1,action_shape)
+            # print('{} : {}'.format(self.name, pi))
+            u = pi.cpu().numpy()
+            noise = noise_rate * ((self.args.high_action - self.args.low_action) / 2) * np.random.randn(
+                *u.shape)  # gaussian noise
+            u += noise
+            u = np.clip(u, np.float(-(self.args.high_action - self.args.low_action) / 2),
+                        np.float((self.args.high_action - self.args.low_action) / 2))
         elif self.algorithm == "MASAC" or self.algorithm == "MAPPO" or self.algorithm == "MLGA2C":
-            inputs = torch.tensor(o, dtype=torch.float32).unsqueeze(0).cuda()
+            inputs = torch.tensor(list(self.memory)[::-1], dtype=torch.float32).unsqueeze(0).cuda()
             if self.algorithm == "MASAC" or self.algorithm == "MLGA2C":
                 pi2, prob, _, _ = self.policy.policy.get_actions(inputs)
             else:
@@ -75,5 +88,13 @@ class Agent:
             self.policy.train(obs, next_obs, values, dones, actions, logprobs, rewards, nextdone, self.agent_id, time_steps)
         elif algorithm == "MADDPG_ATT":
             self.policy.train(transitions, other_agents)
+        elif algorithm == "MADDPG_RNN":
+            self.policy.train(transitions, other_agents)
         else:
             print("error arguments input")
+    def memory_reset(self):
+        self.memory.clear()
+
+    def store_memory(self, obs):
+        # 滑动窗口来更新记忆
+        self.memory.append(obs)

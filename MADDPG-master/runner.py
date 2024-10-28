@@ -1,6 +1,7 @@
 from tqdm import tqdm
 from agent import Agent
 from common.replay_buffer import Buffer
+from common.replay_buffer_rnn import Buffer_RNN
 import torch
 import os
 import numpy as np
@@ -14,6 +15,7 @@ from tensor_b import TensorboardWriter, MTT_tensorboard
 
 from common.utils import check_agent_bound, check_agent_near_bound, ezDrawAPic, is_success, all_ones
 from maddpg.maddpg import MADDPG
+from maddpg.maddpg_rnn import MADDPG_RNN
 from MASAC.MASAC import MASAC
 from MAPPO.MAPPO import MAPPO
 from MLGA2C.MLGA2C import MLGA2C
@@ -59,6 +61,16 @@ class Runner:
         if algorithms == "MADDPG":
             for i in range(self.args.n_agents):
                 policy = MADDPG(self.args, i, iterations=self.number, writer=self.writer)
+                Wrapper = policy.Wrapper
+                self.writer.tensorboard_model_collect(Wrapper, algorithms)
+
+                agent = Agent(i, self.args, policy, algorithms)
+                agents.append(agent)
+        elif algorithms == "MADDPG_RNN":
+            self.buffer = Buffer_RNN(self.args)
+            # 用自己的随机连续抽样
+            for i in range(self.args.n_agents):
+                policy = MADDPG_RNN(self.args, i, iterations=self.number, writer=self.writer)
                 Wrapper = policy.Wrapper
                 self.writer.tensorboard_model_collect(Wrapper, algorithms)
 
@@ -138,7 +150,8 @@ class Runner:
                 # 这里就是一个episode结束的位置
                 # TODO: epi data processing
                 s = self.env.reset()
-
+                for agent in self.agents:
+                    agent.memory_reset()
                 if self.algorithm == "MAPPO":
                     u_joint.zero_()
                     obs_joint.zero_()
@@ -218,9 +231,13 @@ class Runner:
             if self.algorithm == "MADDPG" \
                     or self.algorithm == "MASAC" \
                     or self.algorithm == "MLGA2C" \
-                    or self.algorithm == "MADDPG_ATT":
+                    or self.algorithm == "MADDPG_ATT"\
+                    or self.algorithm == "MADDPG_RNN":
+
                 self.buffer.store_episode(s[:self.args.n_agents], u, r[:self.args.n_agents],
                                           s_next[:self.args.n_agents])
+                for i, agent in enumerate(self.agents):
+                    agent.store_memory(s[i])
                 s = s_next
                 if self.buffer.current_size >= self.args.batch_size:
                     transitions = self.buffer.sample(self.args.batch_size)
@@ -248,8 +265,9 @@ class Runner:
             # TODO：画图部分，其实这里有待考究，因为每个episode的时间步都已经不一样了，按道理每次画图检查是根据episode数来
             #  计算，而不是根据timestep数来计算，即evaluate_rate(这个值实际上是时间步有关的值）
             if time_step > 0 and time_step % self.args.evaluate_rate == 0:
-                returns.append(self.evaluate()[0])
-                success_rate.append(self.evaluate()[1])
+                output = self.evaluate()
+                returns.append(output[0])
+                success_rate.append(output[1])
 
 
                 plt.figure(figsize=(20, 20))

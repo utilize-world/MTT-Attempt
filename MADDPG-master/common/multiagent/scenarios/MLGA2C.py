@@ -6,6 +6,7 @@ from utils import find_index  # 这个函数用来奖励的计算，防止多个
 from utils import cal_dis, cal_relative_pos, calculate_shapley_value, v, normNegetive
 import sys
 import torch.nn.functional as F
+
 sys.path.append('../')
 
 
@@ -31,7 +32,11 @@ def calculate_relative_position_of_other_agents(agent, other, world, fortarget=F
     else:
         for other_agent in other:
             pj = other_agent.state.p_pos
-            relative_position_map.append(cal_relative_pos(pi, pj))
+            if 0 < cal_dis(pi, pj) <= agent.obs_range:
+                relative_position_map.append(cal_relative_pos(pi, pj))
+            elif cal_dis(pi, pj) > agent.obs_range:
+                relative_position_map.append([0, 0])
+            # relative_position_map.append(cal_relative_pos(pi, pj))
     relative_position_map = np.array(relative_position_map).flatten()
     return relative_position_map
 
@@ -45,6 +50,7 @@ class Scenario(BaseScenario):
 
         world = World()
         world.comm_range = 0.5  # 原文中是获取最近的两个agent的数据，以及最近两个target的信息
+        world.comm_range = 0.5  # 全通
         world.bound = 2  # 2mx2m
 
         # set any world properties first
@@ -147,36 +153,69 @@ class Scenario(BaseScenario):
         :param world:所在环境
         :return:
         """
-
-        # SE_reward = 0   # 空间熵奖励，这个应该随时间步逐渐消失，在这里先不定义
+        #  ------------------initialize and preprocess
+        w1, w2, w3, w4, w5 = 1, 1, 1, 1, 1
+        SE_reward = 0  # 空间熵奖励，这个应该随时间步逐渐消失，在这里先不定义
         dis_reward = 0  # 距离和奖励
         dis_weight = 1  # 距离和权重
+        shapleyReward = 0
+        bound_reward = 0
         collision_reward = 0  # 如果与其他无人机碰撞，则会获得惩罚，这一点只需要先判断是否有通信存在，然后再判断最近
         time_reward = -0.01  # 如果目标在感知范围内，则为0，否则就是一个惩罚时间的奖励
-        #     -------------------------distance sum---------------
         dis_map = world.distance_cal_target()  # 得到一个所有UAV相对所有target的距离矩阵
-        dis_reward = - dis_weight * dis_map.sum() / len(dis_map) # 平均
-
-        # shapleyReward = normNegetive(calculate_shapley_value(len(world.agents), lambda S: v(S, dis_map)))[agent_index]
-        shapleyReward = calculate_shapley_value(len(world.agents), lambda S: v(S, dis_map))[agent_index]
-        #     -------------------------collision reward-----------
         distance_uavs_map = world.distance_cal_agent()  # 这样做每次都要调用一次全局的表，实在是有点浪费，但是懒得改了
-        if (0 < distance <= agent.safe_range for distance in distance_uavs_map[agent_index]):
-            collision_reward = -1
-        #     -------------------------time_reward----------------
-        min_dis = np.min(dis_map[agent_index])
+
+        dis_UAV_in_comm = []
+        dis_UAV_in_comm_index = []
+        for index, dis_uav in enumerate(distance_uavs_map[agent_index]):
+            if dis_uav < world.comm_range:
+                dis_UAV_in_comm.append(dis_uav)
+                dis_UAV_in_comm_index.append(index)
+        n = len(dis_UAV_in_comm)
+        sha_index = dis_UAV_in_comm_index.index(agent_index)
+        #     -------------------------distance sum and time---------------
+
+        current_uav_target_dismap = dis_map[agent_index]
+        min_dis = np.min(current_uav_target_dismap)
         if min_dis <= agent.obs_range:
             time_reward = 1
-        #     ----------------------------------------------------
+
+        #    ----global dis reward----
+        for ele in dis_map:
+            for dis in ele:
+                if dis < agent.obs_range:
+                    dis_reward += 1 + (agent.obs_range - dis) / agent.obs_range
+        # shapleyReward = normNegetive(calculate_shapley_value(len(world.agents), lambda S: v(S, dis_map)))[agent_index]
+        shapleyReward = calculate_shapley_value(n, lambda S: v(S, dis_map,dis_UAV_in_comm_index, agent.obs_range))[sha_index]
+
+        #     -------------------------collision reward-----------
+        # if (0 < distance <= agent.safe_range for distance in distance_uavs_map[agent_index]):
+        #     collision_reward = -1
+        for distance_U in distance_uavs_map:
+            for disU in distance_U:
+                if 0 < disU < agent.safe_range:
+                    collision_reward += (disU - agent.safe_range) / agent.safe_range
+        # ---bound
+        if agent.state.p_pos[0] < 0 or agent.state.p_pos[0] > world.bound:
+            bound_reward -= abs(-1 + agent.state.p_pos[0])
+        if agent.state.p_pos[1] < 0 or agent.state.p_pos[1] > world.bound:
+            bound_reward -= abs(-1 + agent.state.p_pos[1])
+
+        if bound_reward != 0:
+            print("out!b_reward=", bound_reward)
         # if agent.obs_flag:
         #     print("detected target")
-        # ### SE_reward
-        # n = len(distance_uavs_map[agent_index])
-        # ave_dis = 2 * sum(distance_uavs_map[agent_index]) / (n * (n-1))
-        #
-        # SE_reward = (ave_dis - agent.safe_range)/(world.SE_dis - agent.safe_range)
+        ### SE_reward----------------------------------------------------
+
+        if n >= 2:
+            ave_dis = 2 * sum(dis_UAV_in_comm) / (n * (n - 1))
+            SE_reward = (ave_dis - agent.safe_range) / (world.SE_dis - agent.safe_range)
+        else:
+            SE_reward = 0
+
         # return dis_reward + collision_reward + time_reward
-        return dis_reward  + collision_reward + time_reward
+        return w1 * dis_reward + w2 * shapleyReward + w3 * collision_reward +\
+               w4 * time_reward + 0.1 * SE_reward + w5 * bound_reward
 
     # 定义单个agent的观察空间,静态方法
     def observation(self, agent, world):
@@ -205,14 +244,19 @@ class Scenario(BaseScenario):
         return obs_cat
 
     def done_judge(self, world):
-        agents = self.get_agent(world)
+        agent = self.get_agent(world)[0]
         flag = 1
-        for agent in agents:
-            if agent.obs_flag:
-                continue
-            else:
-                flag = 0
-                break
+        dis_map = world.distance_cal_target()
+        # 所有target都被观察才是对的
+        for col in list(zip(*dis_map)):
+            is_target_detected = False
+            for col_ele in col:
+                if col_ele <= agent.obs_range:
+                    is_target_detected = True
+                    break
+            if not is_target_detected:
+                return 0
+
         if flag:
-            print("all obs")
+            print("all targets obs")
         return flag

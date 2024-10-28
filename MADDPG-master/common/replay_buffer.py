@@ -36,6 +36,22 @@ class Buffer:
             temp_buffer[key] = self.buffer[key][idx]
         return temp_buffer
 
+        # # sample the data from the replay buffer
+        # def sample(self, batch_size):
+        #     temp_buffer = {}
+        #     # 随机选择一个起始索引，确保能提取到连续的10个时间步
+        #     max_start_idx = self.current_size - 10  # 计算最大起始索引
+        #     if max_start_idx < 0:  # 如果当前buffer没有足够的样本，返回空
+        #         return None
+        #
+        #     start_idx = np.random.randint(0, max_start_idx)  # 随机选择起始索引
+        #     for key in self.buffer.keys():
+        #         # 提取从start_idx开始的10个样本
+        #         temp_buffer[key] = self.buffer[key][start_idx:start_idx + 10]
+        #
+        #     return temp_buffer
+
+
     def _get_storage_idx(self, inc=None):
         inc = inc or 1
         if self.current_size+inc <= self.size:
