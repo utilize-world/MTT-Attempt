@@ -23,7 +23,7 @@ class Actor(nn.Module):
         self.actor_id = agent_id
         self.fc1 = nn.Linear(args.obs_shape[agent_id], 64)  # 18*64
         self.fc2 = nn.Linear(64, 64)            # Fully connected
-        self.fc3 = nn.Linear(64, 64)
+
         self.fc_logstd = nn.Linear(64, args.action_shape[agent_id])    #
         self.fc_mean = nn.Linear(64, args.action_shape[agent_id])   # 均值输出层
 
@@ -63,9 +63,9 @@ class Actor(nn.Module):
         #     )
 
     def forward(self, x):
-        x = F.relu(self.fc1(x))     # 一层层连接，一共三层
-        x = F.relu(self.fc2(x))
-        x = F.relu(self.fc3(x))
+        x = F.tanh(self.fc1(x))     # 一层层连接，一共三层
+        x = F.tanh(self.fc2(x))
+
         # log_std: tensor(256,2)
         log_std = self.fc_logstd(x)
         mean = self.fc_mean(x)
@@ -91,8 +91,8 @@ class Actor(nn.Module):
         x_t = normal.rsample()  # for reparameterization trick (mean + std * N(0,1)) 先对标准正态采样，再重新加上
         # x_t, y_t : tensor(256, 2)
         y_t = torch.tanh(x_t) # Enforcing Action Bound
-        log_prob = normal.log_prob(x_t) # x值对应的对数概率，因为normal代表了一个正态分布的概率密度函数
-        log_prob -= torch.log(self.action_scale * (1 - y_t.pow(2)) + 1e-6)
+        # x值对应的对数概率，因为normal代表了一个正态分布的概率密度函数
+        log_prob = normal.log_prob(x_t) - torch.log(self.action_scale * (1 - y_t.pow(2)) + 1e-6)
         # log_prob = log_prob - torch.log((1 - y_t.pow(2)) + 1e-6)
         log_prob = log_prob.sum(1, keepdim=True)
         #mean = torch.tanh(mean) * self.action_scale + self.action_bias
@@ -110,7 +110,7 @@ class Q_net(nn.Module):
         # 也就是说输入是两者的拼接
         # Q 网络的输出可以是所有agent的动作空间维度之和，以及加上全局状态，作为一个centralized critic
         self.fc2 = nn.Linear(64, 64)
-        self.fc3 = nn.Linear(64, 64)
+
         self.q_out = nn.Linear(64, 1)
 
         self.q_out.weight.data.uniform_(-init_w, init_w)
@@ -120,13 +120,11 @@ class Q_net(nn.Module):
     def forward(self, state, action):
         state = torch.cat(state, dim=1) # 将state中的元素拼接，按照行并排的方式，得到联合状态
         # 具体有关cat  https://blog.csdn.net/scar2016/article/details/121382717
-        for i in range(len(action)):
-            action[i] /= self.max_action        # 这一步是把action[i] ”归一化“，限制到[-1,1]
         action = torch.cat(action, dim=1)       # 拼接得到联合动作
         x = torch.cat([state, action], dim=1)   # 拼接状态和动作得到联合状态-动作对，也就是输入到critic中的是联合状态和联合动作
-        x = F.relu(self.fc1(x))
-        x = F.relu(self.fc2(x))
-        x = F.relu(self.fc3(x))
+        x = F.tanh(self.fc1(x))
+        x = F.tanh(self.fc2(x))
+
         q_value = self.q_out(x)
         return q_value
 

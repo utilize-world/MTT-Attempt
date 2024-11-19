@@ -129,7 +129,6 @@ class MADDPG:
 
         self.writer.tensorboard_scalardata_collect(actor_loss, self.writer.time_step, f"actor_loss_{self.agent_id}_")
         self.writer.tensorboard_scalardata_collect(critic_loss, self.writer.time_step, f"critic_loss_{self.agent_id}_")
-
         self.actor_optim.zero_grad()  # 每次更新前，必须将所要更新梯度的网络梯度置0，因为梯度是累积的
         # 在通过backward计算完梯度后(产生梯度)，经过step来通过梯度下降法更新参数的值
         actor_loss.backward()
@@ -145,6 +144,7 @@ class MADDPG:
         if self.train_step > 0 and self.train_step % self.args.save_rate == 0:
             self.save_model(self.train_step, self.iterations)
         self.train_step += 1
+
 
     def save_model(self, train_step, iterations):
         # 这里的iterations代表第几次迭代

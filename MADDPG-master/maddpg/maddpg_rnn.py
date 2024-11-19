@@ -2,7 +2,7 @@ from multipledispatch import dispatch
 
 import torch
 import os
-from .ac_RNN import Actor, Critic, Wrapper
+from .ac_RNN import Actor, Critic, Wrapper, Actor_MLP, Critic_MLP
 
 
 class MADDPG_RNN:
@@ -10,19 +10,27 @@ class MADDPG_RNN:
         self.args = args
         self.agent_id = agent_id
         self.train_step = 0
-        self.Algorithm = "MADDPG"
+        self.Algorithm = "MADDPG_RNN"
         self.device = torch.device("cuda" if torch.cuda.is_available() and args.cuda else "cpu")
         self.iterations = iterations  # 代表第几次训练任务
         # create the network
-        self.actor_network = Actor(args, agent_id).to(self.device)
-        self.critic_network = Critic(args).to(self.device)
+
         # using for network architecture
         self.Wrapper = Wrapper(args, agent_id).to(self.device)
         self.evaluate = self.args.evaluate
         # build up the target network
-        self.actor_target_network = Actor(args, agent_id).to(self.device)
-        self.critic_target_network = Critic(args).to(self.device)
 
+
+        if self.args.rnn:
+            self.actor_network = Actor(args, agent_id).to(self.device)
+            self.critic_network = Critic(args).to(self.device)
+            self.actor_target_network = Actor(args, agent_id).to(self.device)
+            self.critic_target_network = Critic(args).to(self.device)
+        else:
+            self.actor_network = Actor_MLP(args, agent_id).to(self.device)
+            self.critic_network = Critic_MLP(args).to(self.device)
+            self.actor_target_network = Actor_MLP(args, agent_id).to(self.device)
+            self.critic_target_network = Critic_MLP(args).to(self.device)
         # load the weights into the target networks
         self.actor_target_network.load_state_dict(self.actor_network.state_dict())
         self.critic_target_network.load_state_dict(self.critic_network.state_dict())
@@ -98,20 +106,26 @@ class MADDPG_RNN:
 
         # calculate the target Q value function
         u_next = []
-
         with torch.no_grad():
             # 得到下一个状态对应的动作
             index = 0
             for agent_id in range(self.args.n_agents):
+                u_past_i = u[agent_id][:, 1:, :]  # 切片，获得最后九个动作 256，9,2
                 if agent_id == self.agent_id:
                     a_next, _ = self.actor_target_network(o_next[agent_id])
-                    u_next.append(a_next)
+
+                    a_reshape = a_next.unsqueeze(1)
+                    a_cat = torch.cat((u_past_i, a_reshape), dim=1)
+                    u_next.append(a_cat)
                 else:
                     # 因为传入的other_agents要比总数少一个，可能中间某个agent是当前agent，不能遍历去选择动作
-                    u_next.append(other_agents[index].policy.actor_target_network(o_next[agent_id])[0])
+                    oa_next = other_agents[index].policy.actor_target_network(o_next[agent_id])[0]
+                    oa_reshape = oa_next.unsqueeze(1)
+                    oa_cat = torch.cat((u_past_i, oa_reshape), dim=1)
+                    u_next.append(oa_cat)
                     index += 1
-            temp = [i[:, -1, :] for i in o_next]
-            q_next = self.critic_target_network(temp, u_next)[0].detach()
+            # temp = [i[:, -1, :] for i in o_next]
+            q_next = self.critic_target_network(o_next, u_next)[0].detach()
 
             target_q = (r.unsqueeze(1) + self.args.gamma * q_next).detach()
         #  todo: unext should has the same dim with o dim
@@ -121,7 +135,12 @@ class MADDPG_RNN:
 
         # the actor loss
         # 重新选择联合动作中当前agent的动作，其他agent的动作不变
-        u[self.agent_id] = self.actor_network(o[self.agent_id])[0]
+        u_temp = self.actor_network(o[self.agent_id])[0].unsqueeze(1)
+        u_pi = u[self.agent_id][:, :-1, :]
+        u_new = torch.cat((u_pi, u_temp), dim=1)
+        u[self.agent_id] = u_new
+
+
         # TODO: THE U[SELF.ID] SHOULD KEEP CONSISTENT WITH O DIM
         actor_loss = - self.critic_network(o, u)[0].mean()
         # if self.agent_id == 0:

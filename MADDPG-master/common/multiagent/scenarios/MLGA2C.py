@@ -154,7 +154,7 @@ class Scenario(BaseScenario):
         :return:
         """
         #  ------------------initialize and preprocess
-        w1, w2, w3, w4, w5 = 1, 1, 1, 1, 1
+        w1, w2, w3, w4, w5, wse = 0.8, 0.8, 1, 1, 1, 0.1
         SE_reward = 0  # 空间熵奖励，这个应该随时间步逐渐消失，在这里先不定义
         dis_reward = 0  # 距离和奖励
         dis_weight = 1  # 距离和权重
@@ -186,15 +186,19 @@ class Scenario(BaseScenario):
                 if dis < agent.obs_range:
                     dis_reward += 1 + (agent.obs_range - dis) / agent.obs_range
         # shapleyReward = normNegetive(calculate_shapley_value(len(world.agents), lambda S: v(S, dis_map)))[agent_index]
-        shapleyReward = calculate_shapley_value(n, lambda S: v(S, dis_map,dis_UAV_in_comm_index, agent.obs_range))[sha_index]
+        shapleyReward = calculate_shapley_value(n, lambda S: v(S, dis_map, dis_UAV_in_comm_index, agent.obs_range))[sha_index]
 
         #     -------------------------collision reward-----------
         # if (0 < distance <= agent.safe_range for distance in distance_uavs_map[agent_index]):
         #     collision_reward = -1
-        for distance_U in distance_uavs_map:
-            for disU in distance_U:
-                if 0 < disU < agent.safe_range:
-                    collision_reward += (disU - agent.safe_range) / agent.safe_range
+        # for distance_U in distance_uavs_map:
+        #     for disU in distance_U:
+        #         if 0 < disU < agent.safe_range:
+        #             collision_reward += (disU - agent.safe_range) / agent.safe_range
+
+        for dist in dis_UAV_in_comm:
+            if 0 < dist < agent.safe_range:
+                collision_reward += (dist - agent.safe_range) / agent.safe_range
         # ---bound
         if agent.state.p_pos[0] < 0 or agent.state.p_pos[0] > world.bound:
             bound_reward -= abs(-1 + agent.state.p_pos[0])
@@ -215,7 +219,7 @@ class Scenario(BaseScenario):
 
         # return dis_reward + collision_reward + time_reward
         return w1 * dis_reward + w2 * shapleyReward + w3 * collision_reward +\
-               w4 * time_reward + 0.1 * SE_reward + w5 * bound_reward
+               w4 * time_reward + wse * SE_reward + w5 * bound_reward
 
     # 定义单个agent的观察空间,静态方法
     def observation(self, agent, world):
@@ -248,14 +252,18 @@ class Scenario(BaseScenario):
         flag = 1
         dis_map = world.distance_cal_target()
         # 所有target都被观察才是对的
-        for col in list(zip(*dis_map)):
-            is_target_detected = False
+        is_target_detected = []
+        for i, col in enumerate(list(zip(*dis_map))):
+            world.targets_u[i].set_be_obs(False)
+            is_target_detected.append(False)
             for col_ele in col:
                 if col_ele <= agent.obs_range:
-                    is_target_detected = True
+                    is_target_detected[-1] = True
+                    world.targets_u[i].set_be_obs(True)
                     break
-            if not is_target_detected:
-                return 0
+
+        if False in is_target_detected:
+            return 0
 
         if flag:
             print("all targets obs")

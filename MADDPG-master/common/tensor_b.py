@@ -50,12 +50,14 @@ from torch.utils.tensorboard import SummaryWriter
 
 
 class TensorboardWriter:
-    def __init__(self, log_dir, writer=None, time_step=None):
+    def __init__(self, log_dir, args, writer=None, time_step=None):
+        self.args = args
         self.writer = writer
         self.log_dir = log_dir
         self.time_step = time_step
         self.write_enabled = True  # 添加标志位来控制写入操作
         self.hist_enable = False
+        self.device = torch.device("cuda" if torch.cuda.is_available() and self.args.cuda else "cpu")
     # 创建writer
     def create_writer(self):
         self.writer = SummaryWriter(log_dir=self.log_dir)
@@ -73,17 +75,17 @@ class TensorboardWriter:
         if alg == "MADDPG":
             ac_input_dim = wrapper.actor.get_input_dim()
             cr_input_dim_o, cr_input_dim_a = wrapper.critic.get_input_dim()
-            dummy_input_Actor = torch.randn(1, ac_input_dim).cuda()
-            dummy_input_Critic_state = torch.randn(1, cr_input_dim_o).cuda()
-            dummy_input_Critic_action = torch.randn(1, cr_input_dim_a).cuda()
+            dummy_input_Actor = torch.randn(1, ac_input_dim).to(self.device)
+            dummy_input_Critic_state = torch.randn(1, cr_input_dim_o).to(self.device)
+            dummy_input_Critic_action = torch.randn(1, cr_input_dim_a).to(self.device)
             self.writer.add_graph(wrapper, (dummy_input_Critic_state, dummy_input_Critic_action, dummy_input_Actor),)
         if alg == "MLGA2C":
             ac_input_dim = wrapper.actor.input_dim
-            dummy_input_Actor = torch.randn(1, ac_input_dim).cuda()
-            dummy_input_Critic_state = torch.randn(2, 7, 2).cuda()
-            dummy_input_Critic_state_o = [torch.randn(2, 7, 2).cuda(), torch.randn(2, 7, 2).cuda()]
-            dummy_input_critic_ac = torch.randn(2, 1, 2).cuda()
-            dummy_input_critic_ac_o = [torch.randn(2, 1, 2).cuda(),torch.randn(2, 1, 2).cuda()]
+            dummy_input_Actor = torch.randn(1, ac_input_dim).to(self.device)
+            dummy_input_Critic_state = torch.randn(2, 7, 2).to(self.device)
+            dummy_input_Critic_state_o = [torch.randn(2, 7, 2).to(self.device), torch.randn(2, 7, 2).to(self.device)]
+            dummy_input_critic_ac = torch.randn(2, 1, 2).to(self.device)
+            dummy_input_critic_ac_o = [torch.randn(2, 1, 2).to(self.device),torch.randn(2, 1, 2).to(self.device)]
             self.writer.add_graph(wrapper, (dummy_input_Actor,
                                             dummy_input_Critic_state,
                                             dummy_input_Critic_state_o,
@@ -127,8 +129,9 @@ class TensorboardWriter:
 # 用来记录各agent和target的位置和动作
 
 class MTT_tensorboard:
-    def __init__(self, agent, target, log_dir):
-        self.MTT_tensorboard = TensorboardWriter(log_dir=log_dir)
+    def __init__(self, agent, target, log_dir, args):
+        self.args = args
+        self.MTT_tensorboard = TensorboardWriter(log_dir, self.args)
         self.writer = self.MTT_tensorboard.create_writer()
         # 传入了多个agent和target
         self.agent = agent

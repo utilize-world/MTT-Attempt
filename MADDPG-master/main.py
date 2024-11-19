@@ -31,7 +31,7 @@ if __name__ == '__main__':
     clear_folder(runner.save_path)
 
     if args.evaluate:
-        returns, _ = runner.evaluate()
+        returns, _, _, _, _, _ = runner.evaluate()
         print('Average returns is', returns)
     else:
         for i in range(1, index + 1):

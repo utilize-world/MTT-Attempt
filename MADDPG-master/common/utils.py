@@ -179,20 +179,35 @@ def print_gradients(model):
 
 # 在每个episode结束时都要归零，
 
-# 然后是检查，如果连续二十个时间步，目标都被观察到，就结束，认为该episode完成，
-def is_success(current_cumulate_tracking_timestep, judge_value=20):
+# 然后是检查，如果连续judge_value个时间步，目标都被观察到，就结束，认为该episode完成，为成功的epi
+def is_success(current_cumulate_tracking_timestep, judge_value=5):
     if current_cumulate_tracking_timestep >= judge_value:
         return True
     else:
         return False
 
+# 计算agent侧的成功率，这里考虑的是整个测试(1个epi)中所有agent都能观察到任意target的时间步 / 总时间步
+def is_agents_success_track(dis_map, bound_value):
+    for row in dis_map:
+        if all([value > bound_value for value in row]):
+            # 如果条件满足，就代表当前存在agent没有观察到target
+            return False
+    # 循环结束都没有return,就代表所有agent都观察到至少一个target
+    return True
 
-# 在测试方面才有成功率，成功率可以定义为完成episode的个数/测试episdoe的个数
+# 判断是否发生了碰撞，碰撞率的计算还是发生碰撞的时间步 / 总的时间步
+def is_collision(uav_map, bound_value):
+    for row in uav_map:
+        if any([0 < value <= bound_value for value in row]):
+            # 如果条件满足，代表有碰撞存在
+            return True
+    # 循环结束都没有return,就代表没有碰撞
+    return False
 
-def cal_success_rate(success_epi, total_epi):
-    return success_epi / total_epi
 
 
+
+# 限速
 def limit_vel(current_value, limited_value):
     if current_value >= limited_value:
         current_value = limited_value
@@ -200,9 +215,10 @@ def limit_vel(current_value, limited_value):
         current_value = -limited_value
     return current_value
 
-
+# 判断done中的是否全1，全1代表全部target都被追踪
 def all_ones(lst):
     return all(x == 1 for x in lst)
+
 
 def normNegetive(lst):
     """Compute softmax values for each sets of scores in x."""

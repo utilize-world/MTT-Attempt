@@ -13,9 +13,10 @@ import tensor_b
 # using for tensorboard
 from tensor_b import TensorboardWriter, MTT_tensorboard
 
-from common.utils import check_agent_bound, check_agent_near_bound, ezDrawAPic, is_success, all_ones
+from common.utils import check_agent_bound, check_agent_near_bound, ezDrawAPic, is_success, all_ones, is_agents_success_track, is_collision
 from maddpg.maddpg import MADDPG
 from maddpg.maddpg_rnn import MADDPG_RNN
+from maddpg.TD3 import TD3
 from MASAC.MASAC import MASAC
 from MAPPO.MAPPO import MAPPO
 from MLGA2C.MLGA2C import MLGA2C
@@ -42,7 +43,7 @@ class Runner:
         self.csv_save_dir = self.args.csv_save_dir + '/' + self.args.scenario_name + '/' + self.algorithm
         self.fig_save_dir = self.args.fig_save_dir + '/' + self.args.scenario_name + '/' + self.algorithm
 
-        self.writer = TensorboardWriter(self.args.tensorboard_dir)
+        self.writer = TensorboardWriter(self.args.tensorboard_dir, self.args)
         self.writer.create_writer()
         if args.writer==False:
             self.writer.disable_write() # 不使用writer，加快速度
@@ -61,6 +62,14 @@ class Runner:
         if algorithms == "MADDPG":
             for i in range(self.args.n_agents):
                 policy = MADDPG(self.args, i, iterations=self.number, writer=self.writer)
+                Wrapper = policy.Wrapper
+                self.writer.tensorboard_model_collect(Wrapper, algorithms)
+
+                agent = Agent(i, self.args, policy, algorithms)
+                agents.append(agent)
+        elif algorithms == "TD3":
+            for i in range(self.args.n_agents):
+                policy = TD3(self.args, i, iterations=self.number, writer=self.writer)
                 Wrapper = policy.Wrapper
                 self.writer.tensorboard_model_collect(Wrapper, algorithms)
 
@@ -104,15 +113,20 @@ class Runner:
         return agents
 
     def run(self):
-        returns = []
-        success_rate = []
-        rewards = 0
-        train_returns = []
+        returns = []    # 一次完整测试(多个epi)的平均总回报，主要是训练过程中每过一段时间就会测试模型性能
+        success_rate = []   # 真正的成功率，即连续n个时间步，所有target都被观察到，则此episode为成功，否则均失败
+        epi_success_rate =[]    # epi成功率，即用1个episode中所有target都被观察到时间步 / 总时间
+        each_target_sr = []     # 每个target的被追踪率，计算是单个epi每个target被追踪的时间步 / 总时间步
+        rewards = 0         # 用来计算单个epi有多少总回报的变量
+        train_returns = []  # 来看每个timestep的reward变化
+        agent_track_rate = []
+        collision_rate = []
+
         done = False
-        rewards_list = []
+        rewards_list = []   # 用来存储上面的rewards的
         done_list = []
         rewards_epi = [0] * len(self.agents)  # 用来计算每个agent对应的reward_epi,individual，所以有多少个agent就有多少个
-        rewards_epi_list = []
+        rewards_epi_list = []   # 用来存rewards——epi
         success_epi = 0 # 记录多少episode成功了
         epi_num = 0 # 记录当前epi数
         out_symbol = False
@@ -208,9 +222,9 @@ class Runner:
                 cumulate_success_step = 0
             # if check_agent_near_bound(self.env.world.agents, self.env.world.bound, 0):
             #     r = [x - 1 for x in r]
-            if critical_done:
-                # 如果全出界了，直接每人-100
-                r = [x - 10 for x in r]
+            # if critical_done:
+            #     # 如果全出界了，直接每人-100
+            #     r = [x - 10 for x in r]
             ################### 单个的时候就不考虑这个奖励了
             # TODO: 这个位置实际就是对每个timestep进行的数据处理
 
@@ -232,7 +246,8 @@ class Runner:
                     or self.algorithm == "MASAC" \
                     or self.algorithm == "MLGA2C" \
                     or self.algorithm == "MADDPG_ATT"\
-                    or self.algorithm == "MADDPG_RNN":
+                    or self.algorithm == "MADDPG_RNN"\
+                    or self.algorithm == "TD3":
 
                 self.buffer.store_episode(s[:self.args.n_agents], u, r[:self.args.n_agents],
                                           s_next[:self.args.n_agents])
@@ -268,6 +283,10 @@ class Runner:
                 output = self.evaluate()
                 returns.append(output[0])
                 success_rate.append(output[1])
+                epi_success_rate.append(output[2])
+                each_target_sr.append(output[3])
+                agent_track_rate.append(output[4])
+                collision_rate.append(output[5])
 
 
                 plt.figure(figsize=(20, 20))
@@ -291,13 +310,30 @@ class Runner:
                 plt.title('training episode average rewards')
 
                 plt.subplot(2, 2, 4)
-                plt.plot(range(len(success_rate)), success_rate)
-                plt.xlabel('time_step * test_freq')
-                plt.ylabel('success_rate')
-                plt.title('success_rate in training')
+                plt.plot(range(len(success_rate)), success_rate, label='true_success_rate', color='blue', linestyle='-', marker='^')
+                plt.plot(range(len(agent_track_rate)), agent_track_rate, label='ave_agent_track_rate', linestyle='-', marker='^')
+                plt.plot(range(len(epi_success_rate)), epi_success_rate, label='epi_per_success_rate', color='red', linestyle='-', marker='^')
+                plt.plot(range(len(collision_rate)), collision_rate, label='ave_collision_rate', linestyle='-', marker='s')
+                plt.legend()
+                plt.xlabel('epi')
+                plt.ylabel('success_rate or collision rate')
+                plt.title('success_rate and collision rate in training')
+
                 plt.savefig(self.save_path + '/plt' + str(self.number) + '.png', format='png')
 
                 plt.close()  # 不用每次都跳出来
+
+                plt.figure()
+                for i in range(len(self.env.world.targets_u)):
+                    name = 'target' + str(i)
+                    plt.plot(range(len(each_target_sr)), np.array(each_target_sr)[:, i],
+                             label=name)
+                plt.legend()
+                plt.xlabel('epi')
+                plt.ylabel('target_tracked_rate')
+                plt.title('target_tracked_rate in training')
+                plt.savefig(self.save_path + '/targetTrackedRate' + str(self.number) + '.png', format='png')
+                plt.close()
 
                 # 这里分别画出每个agent独自的奖励(单个epi的奖励和)
                 # 本来可以这样做，但是为了方便，用了utils自己的简单的画图函数
@@ -322,6 +358,10 @@ class Runner:
 
     def evaluate(self):
         returns = []
+        epi_success_rate = []
+        epi_agent_track_rate = []
+        epi_collision_rate = []
+        each_target_tracked_success_rate = []
         self.env.world.train = False  # 将模式调整为执行
         success_epi = 0
         if self.args.evaluate:
@@ -330,8 +370,12 @@ class Runner:
             # reset the environment
             s = self.env.reset()
             rewards = 0
-            current_success_timestep = 0
-
+            successive_success_timestep = 0
+            suc = False
+            success_timestep = 0
+            collision_timesteps = 0
+            agent_track_timesteps = 0
+            each_target_tracked_timestep = [0]*len(self.env.world.targets_u)
             for time_step in range(self.args.evaluate_episode_len):
                 self.env.render()
                 actions = []
@@ -343,29 +387,78 @@ class Runner:
                 #     actions.append([0, np.random.rand() * 2 - 1, 0, np.random.rand() * 2 - 1, 0])
                 s_next, r, done, info = self.env.step(actions)
                 critical_done = check_agent_bound(self.env.world.agents, self.env.world.bound, 0)
+                dis_map = self.env.world.distance_cal_target()
+                uav_map = self.env.world.distance_cal_agent()
+
+                if is_collision(uav_map, self.env.world.agents[0].safe_range):
+                    collision_timesteps += 1
+                if is_agents_success_track(dis_map, self.env.world.agents[0].obs_range):
+                    agent_track_timesteps += 1
+
+                for i, target in enumerate(self.env.world.targets_u):
+                    if target.be_observed:
+                        each_target_tracked_timestep[i] += 1
+
                 if all_ones(done):
-                    current_success_timestep += 1
+                    print("successive count")
+                    successive_success_timestep += 1
+                    success_timestep += 1
+
                 else:
-                    current_success_timestep = 0
-                if is_success(current_success_timestep):
-                    break
+                    successive_success_timestep = 0
                 # rewards += r[0]     # ？？为什么是r[0],是因为采用shared reward？
                 rewards += sum(r) / len(self.agents)
+                if is_success(successive_success_timestep):
+                    suc = True
+
                 s = s_next
-                if critical_done:
-                    break
+            collision_rate = float(collision_timesteps) / self.args.evaluate_episode_len
+            agent_track_rate = float(agent_track_timesteps) / self.args.evaluate_episode_len
+            per_episode_success_rate = success_timestep / self.args.evaluate_episode_len
+            each_target_tracked_success_rate_single = [float(i) / self.args.evaluate_episode_len for i in each_target_tracked_timestep]
+
+            epi_agent_track_rate.append(agent_track_rate)
+            epi_collision_rate.append(collision_rate)
+            epi_success_rate.append(per_episode_success_rate)
+            each_target_tracked_success_rate.append(each_target_tracked_success_rate_single)
             returns.append(rewards)
-            if is_success(current_success_timestep):
+            if suc:
                 success_epi += 1
+                print(f"success_epi = {success_epi}")
             print('Returns is', rewards)
-        print("The success rate = ", success_epi / self.args.evaluate_episodes) # 计算成功率
-        return sum(returns) / self.args.evaluate_episodes, float(success_epi / self.args.evaluate_episodes)
 
-    def _train_step(self, batch):
-        for key in batch.keys():
-            batch[key] = batch[key].cuda()
+        plt.figure()
+        plt.plot(range(len(epi_success_rate)), epi_success_rate, label='both_obs')
+        for i, target in enumerate(self.env.world.targets_u):
+            # 记录每个target的单个epi追踪成功率
+            name = 'target' + str(i)
+            plt.plot(range(len(each_target_tracked_success_rate)), np.array(each_target_tracked_success_rate)[:, i], label=name)
 
-        for i, agent in enumerate(self.agents):
-            other_agents = self.agents.copy()
-            other_agents.remove(agent)
-            agent.learn(batch, other_agents, self.algorithm)
+
+        plt.legend()
+        plt.xlabel('epi')
+        plt.ylabel('epi_success_rate')
+        plt.title('success_rate in Exec')
+        plt.savefig(self.save_path + '/TestEpiSuccessRate' + str(self.number) + '.png', format='png')
+        plt.close()
+
+
+        print("The success rate = ", float(success_epi / self.args.evaluate_episodes)) # 计算成功率
+        print("The ave_epi success rate = ", np.mean(epi_success_rate)) # 计算成功率
+        print("The ave_epi target tracking success rate = ", np.mean(each_target_tracked_success_rate, axis=0)) # 计算成功率
+
+        return sum(returns) / self.args.evaluate_episodes, \
+               float(success_epi / self.args.evaluate_episodes), \
+               np.mean(epi_success_rate), \
+               np.mean(each_target_tracked_success_rate, axis=0), \
+               np.mean(epi_agent_track_rate), \
+               np.mean(epi_collision_rate)
+
+    # def _train_step(self, batch):
+    #     for key in batch.keys():
+    #         batch[key] = batch[key].to(self.device)
+    #
+    #     for i, agent in enumerate(self.agents):
+    #         other_agents = self.agents.copy()
+    #         other_agents.remove(agent)
+    #         agent.learn(batch, other_agents, self.algorithm)

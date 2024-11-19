@@ -71,7 +71,7 @@ class MLGA2C:
 
     def train(self, transitions, agent_id):
         for key in transitions.keys():
-            transitions[key] = torch.tensor(transitions[key], dtype=torch.float32).cuda()
+            transitions[key] = torch.tensor(transitions[key], dtype=torch.float32).to(self.device)
         # transition实际上是一个字典，是agent数量*4个key，每个key对应的是tensor(batchsize,space)    如o_0 : tensor(256*19)
         o, u, o_next = [], [], []  # 用来装其他agent经验中的各项
         o_other_reshape, u_other_reshape, o_next_other_reshape = [], [], []
@@ -162,7 +162,8 @@ class MLGA2C:
         # qf_loss = (qf1_loss + qf2_loss)
         self.q_optimizer.zero_grad()
         qf_loss.backward()
-
+        torch.nn.utils.clip_grad_norm_(self.qf1.parameters(), max_norm=0.5)
+        torch.nn.utils.clip_grad_norm_(self.qf2.parameters(), max_norm=0.5)
         # for param in self.qf1.parameters():
         #     if param.grad is not None:
         #         print(f'Critic Parameter:')
@@ -214,7 +215,7 @@ class MLGA2C:
             # print(f'actor loss = {actor_loss}')
             self.actor_optimizer.zero_grad()
             actor_loss.backward()
-
+            torch.nn.utils.clip_grad_norm_(self.policy.parameters(), max_norm=0.5)
             self.writer.tensorboard_scalardata_collect(actor_loss, self.writer.time_step,
                                                        f"actor_loss_{agent_id}_")
             self.writer.tensorboard_scalardata_collect(qf_loss, self.writer.time_step,
@@ -248,6 +249,7 @@ class MLGA2C:
 
             self.a_optimizer.zero_grad()
             alpha_loss.backward()
+            torch.nn.utils.clip_grad_norm_([self.log_alpha], max_norm=1.0)
             self.a_optimizer.step()
             self.alpha = self.log_alpha.exp().item()
 

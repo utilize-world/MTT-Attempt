@@ -45,8 +45,6 @@ class Critic(nn.Module):
         state = torch.cat(state, dim=1) # 将state中的元素拼接，按照行并排的方式，得到联合状态
         # 2*256*19 -> 256*38 为什么？因为torch.cat传入的参数实际上是[tensor(256*19),tensor(256*19)],拼接的是中间的所有tensor，即dim=1，就是对于19那一维度拼接，即变成了状态的拼接
         # 具体有关cat  https://blog.csdn.net/scar2016/article/details/121382717
-        for i in range(len(action)):
-            action[i] /= self.max_action        # 这一步是把action[i] ”归一化“，限制到[-1,1]
         action = torch.cat(action, dim=1)       # 拼接得到联合动作  同样action也是2*tensor(256*2)拼接后就是联合动作
         x = torch.cat([state, action], dim=1)   # 拼接状态和动作得到联合状态-动作对，也就是输入到critic中的是联合状态和联合动作
         x = F.relu(self.fc1(x))

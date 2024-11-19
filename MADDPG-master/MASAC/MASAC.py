@@ -26,11 +26,11 @@ class MASAC:
         self.qf2_t.load_state_dict(self.qf2.state_dict())
         self.q_optimizer = torch.optim.Adam(list(self.qf1.parameters()) + list(self.qf2.parameters()), lr=self.q_lr)
 
-        self.p_lr = 3e-4
+        self.p_lr = 1e-5
 
         # self.actor_t = Actor(args, agent_id)
         # self.alpha = args.alpha
-        ## auto
+        ## auto, target_entroy*3 for
         self.target_entropy = -torch.prod(torch.Tensor([1, self.args.action_shape[0]]).to(self.device)).item()
         self.log_alpha = torch.zeros(1, requires_grad=True, device=self.device)
         self.alpha = self.log_alpha.exp().item()
@@ -126,7 +126,8 @@ class MASAC:
         # qf_loss = (qf1_loss + qf2_loss)
         self.q_optimizer.zero_grad()
         qf_loss.backward()
-
+        torch.nn.utils.clip_grad_norm_(self.qf1.parameters(), max_norm=0.5)
+        torch.nn.utils.clip_grad_norm_(self.qf2.parameters(), max_norm=0.5)
         # for param in self.qf1.parameters():
         #     if param.grad is not None:
         #         print(f'Critic Parameter:')
@@ -166,7 +167,7 @@ class MASAC:
 
             self.actor_optimizer.zero_grad()
             actor_loss.backward()
-
+            torch.nn.utils.clip_grad_norm_(self.policy.parameters(), max_norm=0.5)
             # for param in self.policy.parameters():
             #     if param.grad is None:
             #         print(f'Parameter actor:  - Gradient not computed')
@@ -182,19 +183,25 @@ class MASAC:
 
             ## autotuned alpha
             with torch.no_grad():
+                state_log_pi_a = []
                 for i in range(self.args.n_agents):
-                    u_pi_i, state_log_pi_i, _, _ = self.policy.get_actions(o[i])
-                    u_pi.append(u_pi_i)
-                    state_log_pi.append(state_log_pi_i)
-                log_pi = einops.reduce(
-                    state_log_pi, "c b a -> b a", "sum"
+                    _, state_log_pi_i, _, _ = self.policy.get_actions(o[i])
+
+                    state_log_pi_a.append(state_log_pi_i)
+                log_pi_a = einops.reduce(
+                    state_log_pi_a, "c b a -> b a", "sum"
                 )
-            alpha_loss = (-self.log_alpha * (log_pi + self.target_entropy)).mean()
+            alpha_loss = (-self.log_alpha * (log_pi_a + self.target_entropy)).mean()
 
             self.a_optimizer.zero_grad()
             alpha_loss.backward()
-            self.a_optimizer.step()
+            torch.nn.utils.clip_grad_norm_([self.log_alpha], max_norm=0.5)
+            self.log_alpha = torch.clamp(self.log_alpha, min=-10, max=2)
             self.alpha = self.log_alpha.exp().item()
+            self.a_optimizer.step()
+            # 裁剪alpha值
+
+
 
         self._soft_update_target_network()
 

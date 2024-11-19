@@ -118,7 +118,7 @@ class MAPPO:
         rewards = torch.tensor(rewards).to(self.device)
         next_obs, next_done = torch.Tensor(next_obs).to(self.device), torch.Tensor(nextdone).to(self.device)
         next_obs = [i for i in next_obs]
-        next_obs = torch.cat(next_obs, dim=2)   # 处理一下next_obs
+        next_obs = torch.cat(next_obs, dim=-1)   # 处理一下next_obs
         with torch.no_grad():
             next_value = self.critic(next_obs.squeeze(1)).reshape(-1)    # 处理一下维度，从200*1*38变成200*38
             advantages = torch.zeros_like(rewards).to(self.device).reshape(-1)

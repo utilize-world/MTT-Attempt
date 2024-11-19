@@ -74,7 +74,8 @@ class Actor(nn.Module):
 
     def get_actions(self, x):
         mean, log_std = self.forward(x)
-
+        if torch.isnan(x).any():
+            print("Nan DEtected")
         std = log_std.exp()
         normal = torch.distributions.Normal(mean, std)  #   Normal distribution
         # normal = torch.distributions.Normal(0, 1)

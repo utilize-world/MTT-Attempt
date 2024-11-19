@@ -138,9 +138,9 @@ class Agent(Entity):
         # 观察flag
         self.obs_flag = False
         # 观察范围
-        self.obs_range = 3
+        self.obs_range = 0.3
         # 安全距离
-        self.safe_range = 1
+        self.safe_range = 0.15
 
 
 # 用来指定那些target
@@ -160,6 +160,8 @@ class target_UAVs(Agent):
         self.be_observed = False  # 定义了自己的状态，是否被观察到
         self.out = False  # 定义是否出界
 
+    def set_be_obs(self, bool):
+        self.be_observed = bool
 
 # multi-agent world
 class World(object):  # 最关键的
