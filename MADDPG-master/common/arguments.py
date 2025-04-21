@@ -14,10 +14,10 @@ def get_args():
     parser.add_argument("--writer", type=bool, default=True, help='enable tensorboard')
     parser.add_argument("--rnn", type=bool, default=False, help="the MADDPG_RNN rnn network enable?")
     # Environment
-    #parser.add_argument("--scenario-name", type=str, default="MLGA2C", help="name of the scenario script")
-    parser.add_argument("--scenario-name", type=str, default="fullTargetObs", help="name of the scenario script")
+    parser.add_argument("--scenario-name", type=str, default="fto_assignTargets", help="name of the scenario script")
+    #parser.add_argument("--scenario-name", type=str, default="fullTargetObs", help="name of the scenario script")
     parser.add_argument("--max-episode-len", type=int, default=200, help="maximum episode length")
-    parser.add_argument("--time-steps", type=int, default=200000, help="number of time steps")
+    parser.add_argument("--time-steps", type=int, default=300000, help="number of time steps")
     # 一个地图最多env.n个agents，用户可以定义min(env.n,num-adversaries)个敌人，剩下的是好的agent
     parser.add_argument("--num-adversaries", type=int, default=0, help="number of adversaries")
     # Core training parameters
@@ -52,9 +52,9 @@ def get_args():
     parser.add_argument("--tensorboard-dir", type=str, default='tensorboard_data',help="directory in which stores the data using in tensorboard")
 
     # Evaluate
-    parser.add_argument("--evaluate-episodes", type=int, default=20, help="number of episodes for evaluating")
+    parser.add_argument("--evaluate-episodes", type=int, default=1000, help="number of episodes for evaluating")
     parser.add_argument("--evaluate-episode-len", type=int, default=200, help="length of episodes for evaluating")
-    parser.add_argument("--evaluate", type=bool, default=False, help="whether to evaluate the model")
+    parser.add_argument("--evaluate", type=bool, default=True, help="whether to evaluate the model")
     parser.add_argument("--evaluate-rate", type=int, default=10000, help="how often to evaluate model")
     args = parser.parse_args()
 

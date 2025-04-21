@@ -45,13 +45,18 @@ def make_env(args):
     import multiagent.scenarios as scenarios
 
     # load scenario from script
-    scenario = scenarios.load(args.scenario_name + ".py").Scenario()
+    scenario = scenarios.load(args.scenario_name + ".py").Scenario(args.evaluate)
 
     # create world
     world = scenario.make_world()
     # create multiagent environment
-    env = MultiAgentEnv(world, scenario.reset_world, scenario.agent_reward, scenario.observation, None,
-                        scenario.done_judge)
+    env = MultiAgentEnv(world,
+                        scenario.reset_world,
+                        scenario.agent_reward,
+                        scenario.observation,
+                        None,
+                        scenario.done_judge,
+                        scenario.constraints)
     # env = MultiAgentEnv(world)
     args.n_players = env.n  # 包含敌人的所有玩家个数
     args.n_agents = env.n - args.num_adversaries  # 需要操控的玩家个数，虽然敌人也可以控制，但是双方都学习的话需要不同的算法
@@ -62,8 +67,8 @@ def make_env(args):
         action_shape.append(content)
     args.action_shape = action_shape[:args.n_agents]  # 每一维代表该agent的act维度
     args.action_shape = [2 for i in range(args.n_agents)]  # 这里直接设置动作维度为1，所以前面的可能没用了
-    args.high_action = 0.1
-    args.low_action = -0.1
+    args.high_action = 1
+    args.low_action = -1
     # args.high_action = world.Na       # directly define the max_accelaration
     # args.low_action = 1
     return env, args
@@ -186,6 +191,13 @@ def is_success(current_cumulate_tracking_timestep, judge_value=5):
     else:
         return False
 
+
+def is_success_col(current_cumulate_tracking_timestep, collision_flag, judge_value=5):
+    if current_cumulate_tracking_timestep >= judge_value and collision_flag <= judge_value:
+        return True
+    else:
+        return False
+
 # 计算agent侧的成功率，这里考虑的是整个测试(1个epi)中所有agent都能观察到任意target的时间步 / 总时间步
 def is_agents_success_track(dis_map, bound_value):
     for row in dis_map:
@@ -225,7 +237,12 @@ def normNegetive(lst):
     e_x = np.exp(lst - np.max(lst))  # Subtract max(x) for numerical stability
     return e_x / e_x.sum()
 
-
+def is_collision(agent1, agent2):
+    # 判断是否碰撞
+    delta_pos = agent1.state.p_pos - agent2.state.p_pos
+    dist = np.sqrt(np.sum(np.square(delta_pos)))
+    dist_min = agent1.size + agent2.size
+    return True if dist < dist_min else False
 # 如果一个列表中都为1则返回ture否则false
 
 from math import factorial

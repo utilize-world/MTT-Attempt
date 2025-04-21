@@ -77,7 +77,7 @@ class Actor(nn.Module):
     def get_actions(self, x):
         mean, log_std = self.forward(x)
 
-        std = log_std.exp()
+        std = torch.exp(log_std)
         normal = torch.distributions.Normal(mean, std)  #   Normal distribution
         # normal = torch.distributions.Normal(0, 1)
         # ########
@@ -92,15 +92,19 @@ class Actor(nn.Module):
         # x_t, y_t : tensor(256, 2)
         y_t = torch.tanh(x_t) # Enforcing Action Bound
         # x值对应的对数概率，因为normal代表了一个正态分布的概率密度函数
-        log_prob = normal.log_prob(x_t) - torch.log(self.action_scale * (1 - y_t.pow(2)) + 1e-6)
-        # log_prob = log_prob - torch.log((1 - y_t.pow(2)) + 1e-6)
-        log_prob = log_prob.sum(1, keepdim=True)
-        #mean = torch.tanh(mean) * self.action_scale + self.action_bias
-        action = ((self.max_action - self.min_action) / 2) * torch.tanh(x_t)
-        return action, log_prob, mean, log_std
+        log_pi = normal.log_prob(x_t).sum(dim=1, keepdim=True)
+        log_pi = log_pi - (2 * (np.log(2) - x_t - F.softplus(-2 * x_t))).sum(dim=1, keepdim=True)
 
-    def just_get_action(self, state, deterministic):
-        pass
+        # log_prob = normal.log_prob(x_t) - torch.log(self.action_scale * (1 - y_t.pow(2)) + 1e-6)
+        # # log_prob = log_prob - torch.log((1 - y_t.pow(2)) + 1e-6)
+        # log_prob = log_prob.sum(1, keepdim=True)
+        #mean = torch.tanh(mean) * self.action_scale + self.action_bias
+        action = self.max_action * torch.tanh(x_t)
+
+        return action, log_pi, mean, log_std
+
+    # def just_get_action(self, state, deterministic):
+    #     pass
 
 class Q_net(nn.Module):
     def __init__(self, args, init_w=3e-3):
@@ -122,31 +126,31 @@ class Q_net(nn.Module):
         # 具体有关cat  https://blog.csdn.net/scar2016/article/details/121382717
         action = torch.cat(action, dim=1)       # 拼接得到联合动作
         x = torch.cat([state, action], dim=1)   # 拼接状态和动作得到联合状态-动作对，也就是输入到critic中的是联合状态和联合动作
-        x = F.tanh(self.fc1(x))
-        x = F.tanh(self.fc2(x))
+        x = F.relu(self.fc1(x))
+        x = F.relu(self.fc2(x))
 
         q_value = self.q_out(x)
         return q_value
 
 
-class V_net(nn.Module):
-    """
-    Vnet是用来拟合softQ网络中的目标项，也就是贝尔曼方程的第二项，仍受到γ影响？
-
-    """
-    def __init__(self, args, ):
-        super(V_net, self).__init__()
-        self.max_action = args.high_action
-        self.fc1 = nn.Linear(sum(args.obs_shape), 64)  # 输入维度是观测维度
-        self.fc2 = nn.Linear(64, 64)
-        self.fc3 = nn.Linear(64, 64)
-        self.q_out = nn.Linear(64, 1)
-        # 输出的是V
-
-    def forward(self, state, action):
-        state = torch.cat(state, dim=1)  # 将state中的元素拼接，按照行并排的方式，得到联合状态
-        x = F.relu(self.fc1(state))
-        x = F.relu(self.fc2(x))
-        x = F.relu(self.fc3(x))
-        v_value = self.q_out(x)
-        return v_value
+# class V_net(nn.Module):
+#     """
+#     Vnet是用来拟合softQ网络中的目标项，也就是贝尔曼方程的第二项，仍受到γ影响？
+#
+#     """
+#     def __init__(self, args, ):
+#         super(V_net, self).__init__()
+#         self.max_action = args.high_action
+#         self.fc1 = nn.Linear(sum(args.obs_shape), 64)  # 输入维度是观测维度
+#         self.fc2 = nn.Linear(64, 64)
+#         self.fc3 = nn.Linear(64, 64)
+#         self.q_out = nn.Linear(64, 1)
+#         # 输出的是V
+#
+#     def forward(self, state, action):
+#         state = torch.cat(state, dim=1)  # 将state中的元素拼接，按照行并排的方式，得到联合状态
+#         x = F.relu(self.fc1(state))
+#         x = F.relu(self.fc2(x))
+#         x = F.relu(self.fc3(x))
+#         v_value = self.q_out(x)
+#         return v_value

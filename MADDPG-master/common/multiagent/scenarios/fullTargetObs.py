@@ -76,9 +76,13 @@ def calculate_relative_position_of_other_agents(agent, other, world, fortarget=F
 
 
 class Scenario(BaseScenario):
-    def __init__(self):
+    def __init__(self, safe_initialization=True):
         self.rewardNorm = RewardNormalizers()
         self.isRewardNorm = False
+        self.safe_initialization = safe_initialization
+        self.safe_target = True # 保证target初始化不碰
+        np.random.seed(0)
+
     def make_world(self):
         """
         make_world是整个环境的基础，根据core中定义的类，创建了整个环境，并定义了基本的个数，实例化各实体，并初始化数据(reset_world)\n
@@ -120,6 +124,19 @@ class Scenario(BaseScenario):
         self.reset_world(world)
         return world
 
+    def is_safely_initialized(self, agent1, agent2):
+        """
+            Check if the agents are colliding when the environment is initiallized
+        """
+
+        tol = 0.01
+
+        delta_pos = agent1.state.p_pos - agent2.state.p_pos
+        dist = np.sqrt(np.sum(np.square(delta_pos)))
+        dist_min = agent1.size + agent2.size + (agent1.safe_range + agent2.safe_range) / 2 + tol
+
+        return True if dist < dist_min else False
+
     def reset_world(self, world):
         """
         这个是最关键的函数，是环境各变量初始化的步骤
@@ -131,28 +148,56 @@ class Scenario(BaseScenario):
             agent.color = np.array([0.35, 0.85, 0.35])
         for i, target in enumerate(world.targets_u):
             target.color = np.array([0.85, 0.35, 0.35])
-        for i, landmark in enumerate(world.landmarks):
-            landmark.color = np.array([0.25, 0.25, 0.25])
         # 初始化各实体状态
-        for agent in world.agents:
-            agent.state.p_pos = np.random.uniform(bound_ad_value, world.bound - bound_ad_value, world.dim_p)
-            # agent.state.p_pos = np.random.uniform(5, 10, world.dim_p)
-            agent.state.p_vel = np.random.uniform(-0.04, 0.04, 1)  # 注意这里的设置将其定义为常数
-            # agent.state.move_angle = np.random.uniform(-180, 180, 1)  # 取-180到180
-            # 这里修改了，move_angle和p——vel分别对应速度
-            agent.state.move_angle = np.random.uniform(-0.04, 0.04, 1)
-            agent.state.c = np.zeros(world.dim_c)
-            agent.state.target_angle = 0
-            agent.state.target_pos = np.zeros(world.dim_p)
-        for target in world.targets_u:
-            target.state.p_pos = np.random.uniform(bound_ad_value, world.bound - bound_ad_value, world.dim_p)
-            target.state.p_vel = 0.04
-            target.state.move_angle = np.random.uniform(-180, 180, 1)  # 唯一与agent的不同就是速度稍慢
+        # 保证初始化不碰撞
+        has_collision = True
+        while has_collision:
+            for agent in world.agents:
+                agent.state.p_pos = np.random.uniform(bound_ad_value, world.bound - bound_ad_value, world.dim_p)
+                # agent.state.p_pos = np.random.uniform(5, 10, world.dim_p)
+                agent.state.p_vel = np.random.uniform(-0.04, 0.04, 1)  # 注意这里的设置将其定义为常数
+                # agent.state.move_angle = np.random.uniform(-180, 180, 1)  # 取-180到180
+                # 这里修改了，move_angle和p——vel分别对应速度
+                agent.state.move_angle = np.random.uniform(-0.04, 0.04, 1)
+                agent.state.c = np.zeros(world.dim_c)
+                agent.state.target_angle = 0
+                agent.state.target_pos = np.zeros(world.dim_p)
 
-        for i, landmark in enumerate(world.landmarks):
-            if not landmark.boundary:
-                landmark.state.p_pos = np.random.uniform(-0.9, +0.9, world.dim_p)
-                landmark.state.p_vel = np.zeros(world.dim_p)
+
+        # for i, landmark in enumerate(world.landmarks):
+        #     if not landmark.boundary:
+        #         landmark.state.p_pos = np.random.uniform(-0.9, +0.9, world.dim_p)
+        #         landmark.state.p_vel = np.zeros(world.dim_p)
+            # Check if initial position violates constraints
+            has_collision = False
+
+            if self.safe_initialization:
+                for i in range(len(world.agents)):
+                    for j in range(i + 1, len(world.agents), 1):
+                        if self.is_safely_initialized(world.agents[i], world.agents[j]):
+                            has_collision = True
+
+        # 保证初始化时目标也不碰
+
+        if self.safe_target:
+            has_collision = True
+            while has_collision:
+                for target in world.targets_u:
+                    target.state.p_pos = np.random.uniform(bound_ad_value, world.bound - bound_ad_value, world.dim_p)
+                    target.state.p_vel = 0.04
+                    target.state.move_angle = np.random.uniform(-180, 180, 1)  # 唯一与agent的不同就是速度稍慢
+
+                # Check if initial position violates constraints
+                has_collision = False
+                for i in range(len(world.targets_u)):
+                    for j in range(i + 1, len(world.targets_u), 1):
+                        if self.is_safely_initialized(world.targets_u[i],world.targets_u[j]):
+                            has_collision = True
+        else:
+            for target in world.targets_u:
+                target.state.p_pos = np.random.uniform(bound_ad_value, world.bound - bound_ad_value, world.dim_p)
+                target.state.p_vel = 0.04
+                target.state.move_angle = np.random.uniform(-180, 180, 1)  # 唯一与agent的不同就是速度稍慢
 
     def is_collision(self, agent1, agent2):
         # 判断是否碰撞
@@ -190,7 +235,7 @@ class Scenario(BaseScenario):
         :return:
         """
         #  ------------------initialize and preprocess
-        w1, w2, w3, w4, w5, wse = 0.8, 0.8, 3, 1, 1, 0.1
+        w1, w2, w3, w4, w5, wse = 0.8, 0, 3, 1, 1, 0.1
         SE_reward = 0  # 空间熵奖励，这个应该随时间步逐渐消失，在这里先不定义
         dis_reward = 0  # 距离和奖励
         dis_weight = 1  # 距离和权重
@@ -232,9 +277,13 @@ class Scenario(BaseScenario):
         #     for disU in distance_U:
         #         if 0 < disU < agent.safe_range:
         #             collision_reward += (disU - agent.safe_range) / agent.safe_range
-        for dist in dis_UAV_in_comm:
-            if 0 < dist < agent.safe_range:
-                collision_reward += (dist - agent.safe_range) / agent.safe_range
+        # for dist in dis_UAV_in_comm:
+        #     if 0 < dist < agent.safe_range:
+        #         collision_reward += (dist - agent.safe_range) / agent.safe_range
+
+        for a in world.agents:
+            if self.is_collision(a, agent):
+                collision_reward -= 0.2
         # ---bound
         if agent.state.p_pos[0] < 0 or agent.state.p_pos[0] > world.bound:
             bound_reward -= abs(-1 + agent.state.p_pos[0])
@@ -322,3 +371,14 @@ class Scenario(BaseScenario):
         if flag:
             print("all targets obs")
         return flag
+
+
+    def constraints(self, agent, world):
+        # Constraint Type 1: Collisions with other robots
+        other_agents = [a for a in world.agents if a is not agent]
+
+        collision_signals = np.zeros(len(world.agents) - 1)
+        for i, other in enumerate(other_agents):
+            collision_signals[i] = np.linalg.norm(other.state.p_pos - agent.state.p_pos)
+            # L2 norm default
+        return collision_signals

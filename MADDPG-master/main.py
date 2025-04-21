@@ -7,7 +7,7 @@ import torch
 from draw_plt import collect_data_and_save_drawings
 from utils import clear_folder
 seed = 0
-algorithm = "MADDPG"
+algorithm = "MASAC"
 import os
 
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
@@ -18,6 +18,7 @@ if __name__ == '__main__':
     torch.manual_seed(seed)
 
     args = get_args()
+    evl = args.evaluate
     index = args.training_times    # 训练次数
     print(args)
     print(type(args))
@@ -26,17 +27,22 @@ if __name__ == '__main__':
 
 
     env, args = make_env(args)  # 将一系列输入的参数和环境作为变量，传递给下面的运行
-    runner = Runner(args, env, algorithm, 0)  #
-    clear_folder(runner.csv_save_dir)   # 清空目标文件夹中的所有文件
-    clear_folder(runner.save_path)
+    runner1 = Runner(args, env, algorithm, 0)  #
+
+    if not evl:
+        clear_folder(runner1.save_path)
+        clear_folder(runner1.csv_save_dir)  # 清空目标文件夹中的所有文件
 
     if args.evaluate:
-        returns, _, _, _, _, _ = runner.evaluate()
+        returns, _, _, _, _, _ = runner1.evaluate()
         print('Average returns is', returns)
     else:
         for i in range(1, index + 1):
             print("running")
-            runner = Runner(args, env, algorithm, i)
+            if i==1:
+                runner = runner1
+            else:
+                runner = Runner(args, env, algorithm, i-1)
             data = runner.run()
             collect_data_and_save_drawings(data=data,
                                            index=i,

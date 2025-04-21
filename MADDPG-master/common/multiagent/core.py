@@ -283,14 +283,14 @@ class World(object):  # 最关键的
                         (target.state.p_pos[0] > high_rebound and 0 < target.state.move_angle < 90):
                     target.state.move_angle = (180 - target.state.move_angle)  # 反弹
                     self.direction_changed_flag[i] = True
-                if (target.state.p_pos[0] < low_rebound and target.state.move_angle < -90) or \
+                elif (target.state.p_pos[0] < low_rebound and target.state.move_angle < -90) or \
                         (target.state.p_pos[0] > high_rebound and 0 > target.state.move_angle > -90):
                     target.state.move_angle = -(180 + target.state.move_angle)
                     self.direction_changed_flag[i] = True
-                if target.state.p_pos[1] < low_rebound and target.state.move_angle < 0:
+                elif target.state.p_pos[1] < low_rebound and target.state.move_angle < 0:
                     target.state.move_angle *= -1
                     self.direction_changed_flag[i] = True
-                if target.state.p_pos[1] > high_rebound and target.state.move_angle > 0:
+                elif target.state.p_pos[1] > high_rebound and target.state.move_angle > 0:
                     target.state.move_angle *= -1
                     self.direction_changed_flag[i] = True
             # 固定方向运动

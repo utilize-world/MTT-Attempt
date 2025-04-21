@@ -4,6 +4,7 @@
     <content url="file://$MODULE_DIR$">
       <sourceFolder url="file://$MODULE_DIR$/MADDPG-master/AttentionModule" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/MADDPG-master/common" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/MADDPG-master/SafeModule" isTestSource="false" />
     </content>
     <orderEntry type="inheritedJdk" />
     <orderEntry type="sourceFolder" forTests="false" />

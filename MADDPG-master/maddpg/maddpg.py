@@ -1,16 +1,20 @@
+import numpy as np
 from multipledispatch import dispatch
 
 import torch
 import os
 from .actor_critic import Actor, Critic, Wrapper
-
+from .ActorSafeNet import ActorSafeNet
 
 class MADDPG:
-    def __init__(self, args, agent_id, iterations, writer):  # 因为不同的agent的obs、act维度可能不一样，所以神经网络不同,需要agent_id来区分
+    def __init__(self, args, agent_id, iterations, writer, safeNet=False, distill=False):  # 因为不同的agent的obs、act维度可能不一样，所以神经网络不同,需要agent_id来区分
         self.args = args
         self.agent_id = agent_id
         self.train_step = 0
         self.Algorithm = "MADDPG"
+        self.SafeNet = safeNet
+        self.evl_with_safeNet = False
+        self.distill = distill
         self.device = torch.device("cuda" if torch.cuda.is_available() and args.cuda else "cpu")
         self.iterations = iterations  # 代表第几次训练任务
         # create the network
@@ -26,6 +30,10 @@ class MADDPG:
         # load the weights into the target networks
         self.actor_target_network.load_state_dict(self.actor_network.state_dict())
         self.critic_target_network.load_state_dict(self.critic_network.state_dict())
+        if safeNet:
+            self.actorSafe = ActorSafeNet(args).to(self.device)
+            # self.actorSafe_target = ActorSafeNet(args)
+            self.SafeOptimizer = torch.optim.Adam(self.actorSafe.parameters(), lr=3e-4)
 
         # create the optimizer
         self.actor_optim = torch.optim.Adam(self.actor_network.parameters(), lr=self.args.lr_actor)
@@ -47,8 +55,8 @@ class MADDPG:
         # 加载模型
         # TODO: load model !!!!
         id = 1
-        if os.path.exists(self.model_path + '/1_actor_params.pkl') and self.evaluate == True:
-            self.load_model()
+        if (os.path.exists(self.model_path + '/1_actor_params.pkl') and self.evaluate == True) or self.distill==True:
+            self.load_model(-1)
 
     @dispatch()
     def load_model(self):
@@ -60,6 +68,12 @@ class MADDPG:
                                                                       self.model_path + '/_actor_params.pkl'))
         print('Agent {} successfully loaded critic_network: {}'.format(self.agent_id,
                                                                        self.model_path + '/_critic_params.pkl'))
+        if self.evl_with_safeNet:
+            self.actorSafe.load_state_dict(
+                torch.load(self.model_path + '/' + str(self.iterations + 1) + '_SafeActor_params.pkl')
+            )
+            print("Agent {} safeNet loaded".format(self.agent_id))
+
 
     @dispatch(int)
     def load_model(self, id):
@@ -73,7 +87,11 @@ class MADDPG:
         print('Agent {} successfully loaded critic_network: {}'.format(self.agent_id,
                                                                        self.model_path + '/' + str(
                                                                            id + 1) + '/_critic_params.pkl'))
-
+        if self.evl_with_safeNet:
+            self.actorSafe.load_state_dict(
+                torch.load(self.model_path+ '/' + str(id + 1) + '_SafeActor_params.pkl')
+            )
+            print("Agent {} safeNet loaded".format(self.agent_id))
     # soft update
     def _soft_update_target_network(self):
         for target_param, param in zip(self.actor_target_network.parameters(), self.actor_network.parameters()):
@@ -81,6 +99,46 @@ class MADDPG:
 
         for target_param, param in zip(self.critic_target_network.parameters(), self.critic_network.parameters()):
             target_param.data.copy_((1 - self.args.tau) * target_param.data + self.args.tau * param.data)
+
+    # def _soft_update_safe_net(self):
+    #     for target_param, param in zip(self.actorSafe_target.parameters(), self.actorSafe.parameters()):
+    #         target_param.data.copy_((1 - self.args.tau) * target_param.data + self.args.tau * param.data)
+
+    def safeNetTrain(self, transitions):
+        for key in transitions.keys():
+            transitions[key] = torch.tensor(transitions[key], dtype=torch.float32).to(self.device)
+        r = transitions['r_%d' % self.agent_id]  # 训练时只需要自己的reward
+        #o, u, o_next, u_safe = [], [], [], []  # 用来装每个agent经验中的各项
+        o      = transitions['o_%d' % self.agent_id]
+        u      =  (transitions['u_%d' % self.agent_id])
+        u_safe = (transitions['u_safe_%d' % self.agent_id])
+        # for agent_id in range(self.args.n_agents):
+        #     o.append(transitions['o_%d' % agent_id])
+        #     u.append(transitions['u_%d' % agent_id])
+        #     # o_next.append(transitions['o_next_%d' % agent_id])
+        #     u_safe.append(transitions['u_safe_%d' % agent_id])
+        # for param in self.actor_network.parameters():
+        #     param.requires_grad = False
+        # for param in self.critic_network.parameters():
+        #     param.requires_grad = False
+
+
+        action_safe = self.actorSafe(o, u)
+
+        # with torch.no_grad():
+        #     u_rl = self.actor_network(o)
+
+        loss = (u_safe - action_safe).pow(2).mean()
+
+        self.SafeOptimizer.zero_grad()
+        loss.backward()
+        self.SafeOptimizer.step()
+
+        if self.train_step > 0 and self.train_step % self.args.save_rate == 0:
+            self.save_safeNet(self.train_step, self.iterations)
+        if self.train_step > 120000 or self.distill==True:
+            self.train_step += 1
+        return loss
 
     # update the network
     def train(self, transitions, other_agents):
@@ -90,7 +148,8 @@ class MADDPG:
         o, u, o_next = [], [], []  # 用来装每个agent经验中的各项
         for agent_id in range(self.args.n_agents):
             o.append(transitions['o_%d' % agent_id])
-            u.append(transitions['u_%d' % agent_id])
+            u.append(transitions['u_safe_%d' % agent_id])
+            # u.append(transitions['u_%d' % agent_id])
             o_next.append(transitions['o_next_%d' % agent_id])
 
         # calculate the target Q value function
@@ -143,6 +202,7 @@ class MADDPG:
         self._soft_update_target_network()
         if self.train_step > 0 and self.train_step % self.args.save_rate == 0:
             self.save_model(self.train_step, self.iterations)
+        # if self.train_step <= 120000:
         self.train_step += 1
 
 
@@ -160,9 +220,24 @@ class MADDPG:
         torch.save(self.actor_network.state_dict(), model_path + '/' + str(iterations) + '_actor_params.pkl')
         torch.save(self.critic_network.state_dict(), model_path + '/' + str(iterations) + '_critic_params.pkl')
 
+    def save_safeNet(self, train_step, iterations):
+        num = str(train_step // self.args.save_rate)
+        model_path = os.path.join(self.args.save_dir, self.args.scenario_name)
+        if not os.path.exists(model_path):
+            os.makedirs(model_path)
+        model_path = os.path.join(model_path, 'agent_%d' % self.agent_id)
+        if not os.path.exists(model_path):
+            os.makedirs(model_path)
+
+        torch.save(self.actorSafe.state_dict(), model_path + '/' + str(iterations) + '_SafeActor_params.pkl')
+
+
     def set_mode(self, signal):
         # 将MADDPG设置为评估模式或者是训练模式, 0是评估， 其他是训练
         if signal == 0:
             self.evaluate = True
         else:
             self.evaluate = False
+
+    def set_evl_with_safeNet(self):
+        self.evl_with_safeNet = True

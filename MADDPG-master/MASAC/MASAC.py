@@ -3,22 +3,26 @@ import os
 from .actor_critic import Actor, Q_net
 import einops
 import torch.nn.functional as F
+from multipledispatch import dispatch
+from .ActorSafeNet import ActorSafeNet
 
-#torch.autograd.set_detect_anomaly(True)
+# torch.autograd.set_detect_anomaly(True)
 
 class MASAC:
-    def __init__(self, args):
+    def __init__(self, args, agent_id, iterations, safeNet=True, distill=True, evl_with_safenet=True):
         self.args = args
         self.train_step = 0
         self.device = torch.device("cuda" if torch.cuda.is_available() and args.cuda else "cpu")
         self.policy = Actor(args, 0).to(self.device)
+        self.algorithm = "MASAC"
+        self.iterations = iterations  # 代表第几次训练任务
         # 创建单个policy_net,这里的0，就是代表第0个agent的actor，由于单个actor，
         # 在homogeneous情况下随机一个都行
-        self.q_lr = 1e-3
-
+        self.q_lr = 3e-4
+        self.agent_id = agent_id
         self.qf1 = Q_net(args).to(self.device)
         self.qf2 = Q_net(args).to(self.device)
-
+        self.evaluate = self.args.evaluate
         self.qf1_t = Q_net(args).to(self.device)
         self.qf2_t = Q_net(args).to(self.device)
 
@@ -26,41 +30,94 @@ class MASAC:
         self.qf2_t.load_state_dict(self.qf2.state_dict())
         self.q_optimizer = torch.optim.Adam(list(self.qf1.parameters()) + list(self.qf2.parameters()), lr=self.q_lr)
 
-        self.p_lr = 1e-5
+        # self.p_lr = 1e-5
+        self.p_lr = 3e-4
 
-        # self.actor_t = Actor(args, agent_id)
-        # self.alpha = args.alpha
+        self.evl_with_safeNet = evl_with_safenet
+        self.SafeNet = safeNet
+        self.distill = distill
+        if safeNet:
+            self.actorSafe = ActorSafeNet(args).to(self.device)
+            # self.actorSafe_target = ActorSafeNet(args)
+            self.SafeOptimizer = torch.optim.Adam(self.actorSafe.parameters(), lr=3e-4)
         ## auto, target_entroy*3 for
-        self.target_entropy = -torch.prod(torch.Tensor([1, self.args.action_shape[0]]).to(self.device)).item()
+        # self.target_entropy = -torch.prod(torch.Tensor([1, self.args.action_shape[0]]).to(self.device)).item()
+        self.target_entropy = -2
         self.log_alpha = torch.zeros(1, requires_grad=True, device=self.device)
         self.alpha = self.log_alpha.exp().item()
         self.a_optimizer = torch.optim.Adam([self.log_alpha], lr=self.q_lr)
-
-        # self.actor_t.load_state_dict(self.actor.state_dict())
         self.actor_optimizer = torch.optim.Adam(self.policy.parameters(), lr=self.p_lr)
-        # if args.autotune:  # 如果有自动更新alpha参数的步骤
-        #     target_entropy = -torch.prod(torch.Tensor(args.action_shape.shape).to(self.device)).item()
-        #     log_alpha = torch.zeros(1, requires_grad=True, device=self.device)
-        #     self.alpha = log_alpha.exp().item()
-        #     a_optimizer = torch.optim.Adam([log_alpha], lr=args.q_lr)
+
+        self.model_path = os.path.join(self.args.save_dir, self.args.scenario_name)
+        self.model_path = os.path.join(self.model_path, 'MASAC')
+        if not os.path.exists(self.model_path):
+            os.makedirs(self.model_path)
+        self.model_path = os.path.join(self.model_path, 'agent_%d' % agent_id)
+        if not os.path.exists(self.model_path):
+            os.makedirs(self.model_path)
+
+        if (os.path.exists(self.model_path) and self.evaluate) or self.distill==True:
+            self.load_model()
 
     # 先留着用来加载和存放model参数
 
     def save_model(self, train_step, agent_id):
+        if not os.path.exists(self.model_path):
+            os.makedirs(self.model_path)
         num = str(train_step // self.args.save_rate)
-        model_path = os.path.join(self.args.save_dir, self.args.scenario_name)
-        model_path = os.path.join(model_path, 'MASAC')
-        if not os.path.exists(model_path):
-            os.makedirs(model_path)
-        model_path = os.path.join(model_path, 'agent_%d' % agent_id)
-        if not os.path.exists(model_path):
-            os.makedirs(model_path)
-        torch.save(self.policy.state_dict(), model_path + '/' + num + 'MASAC_actor_params.pkl')
-        torch.save(self.qf1.state_dict(), model_path + '/' + num + 'MASAC_critic_q1_params.pkl')
-        torch.save(self.qf2.state_dict(), model_path + '/' + num + 'MASAC_critic_q2_params.pkl')
 
+        torch.save(self.policy.state_dict(), self.model_path + '/' + str(self.iterations + 1) + '_MASAC_actor_params'
+                                                                                                '.pkl')
+        torch.save(self.qf1.state_dict(), self.model_path + '/' + str(self.iterations + 1) + '_MASAC_critic_q1_params'
+                                                                                             '.pkl')
+        torch.save(self.qf2.state_dict(), self.model_path + '/' + str(self.iterations + 1) + '_MASAC_critic_q2_params'
+                                                                                             '.pkl')
+
+    @dispatch()
     def load_model(self):
-        pass
+        self.policy.load_state_dict(
+            torch.load(self.model_path + '/' + str(self.iterations + 1) + '_MASAC_actor_params.pkl'))
+        self.qf1.load_state_dict(
+            torch.load(self.model_path + '/' + str(self.iterations + 1) + '_MASAC_critic_q1_params.pkl'))
+        self.qf2.load_state_dict(
+            torch.load(self.model_path + '/' + str(self.iterations + 1) + '_MASAC_critic_q2_params.pkl'))
+        print('Agent {} successfully loaded actor_network: {}'.format(self.agent_id,
+                                                                      self.model_path + '_MASAC_actor_params.pkl'))
+        print('Agent {} successfully loaded critic_1_network: {}'.format(self.agent_id,
+                                                                         self.model_path + '_MASAC_critic_q1_params.pkl'))
+        print('Agent {} successfully loaded critic_2_network: {}'.format(self.agent_id,
+                                                                         self.model_path + '_MASAC_critic_q2_params.pkl'))
+
+        if self.evl_with_safeNet:
+            self.actorSafe.load_state_dict(
+                torch.load(self.model_path + '/' + str(self.iterations) + '_SafeActor_params.pkl')
+            )
+            print("Agent {} safeNet loaded".format(self.agent_id))
+
+
+    @dispatch(int)
+    def load_model(self, id):
+        self.policy.load_state_dict(
+            torch.load(self.model_path + '/' + str(id + 1) + '_MASAC_actor_params.pkl'))
+        self.qf1.load_state_dict(
+            torch.load(self.model_path + '/' + str(id + 1) + '_MASAC_critic_q1_params.pkl'))
+        self.qf2.load_state_dict(
+            torch.load(self.model_path + '/' + str(id + 1) + '_MASAC_critic_q2_params.pkl'))
+        print('Agent {} successfully loaded actor_network: {}'.format(self.agent_id,
+                                                                      self.model_path + str(
+                                                                          id + 1) + '_MASAC_actor_params.pkl'))
+        print('Agent {} successfully loaded critic_1_network: {}'.format(self.agent_id,
+                                                                         self.model_path + str(
+                                                                             id + 1) + '_MASAC_critic_q1_params.pkl'))
+        print('Agent {} successfully loaded critic_2_network: {}'.format(self.agent_id,
+                                                                         self.model_path + str(
+                                                                             id + 1) + '_MASAC_critic_q2_params.pkl'))
+
+        if self.evl_with_safeNet:
+            self.actorSafe.load_state_dict(
+                torch.load(self.model_path+ '/' + str(id + 1) + '_SafeActor_params.pkl')
+            )
+            print("Agent {} safeNet loaded".format(self.agent_id))
 
     def _soft_update_target_network(self):
         for param, target_param in zip(self.qf1.parameters(), self.qf1_t.parameters()):
@@ -79,7 +136,8 @@ class MASAC:
         # o,u,onext : list:2, tensor(256,19), tensor(256,19), for u, list2, tensor(256, 2) tensor(256, 2)
         for agent_id in range(self.args.n_agents):
             o.append(transitions['o_%d' % agent_id])  # 大小是agent_number*batch*observation_shape
-            u.append(transitions['u_%d' % agent_id])
+            # u.append(transitions['u_%d' % agent_id])
+            u.append(transitions['u_safe_%d' % agent_id])
             o_next.append(transitions['o_next_%d' % agent_id])
             #   结构与之前基本一致，只不过是根据id进行重新分开
             #
@@ -87,7 +145,6 @@ class MASAC:
         next_state_log = []
         with torch.no_grad():
 
-            # u_next, next_state_log_pi = self.policy.get_actions(o_next)#报错，格式不对
             for i in range(self.args.n_agents):
                 u_next_i, next_state_log_i, _, _ = self.policy.get_actions(o_next[i])
                 # 256*2, 256*1
@@ -126,8 +183,7 @@ class MASAC:
         # qf_loss = (qf1_loss + qf2_loss)
         self.q_optimizer.zero_grad()
         qf_loss.backward()
-        torch.nn.utils.clip_grad_norm_(self.qf1.parameters(), max_norm=0.5)
-        torch.nn.utils.clip_grad_norm_(self.qf2.parameters(), max_norm=0.5)
+
         # for param in self.qf1.parameters():
         #     if param.grad is not None:
         #         print(f'Critic Parameter:')
@@ -143,7 +199,7 @@ class MASAC:
         self.train_step += 1
         # actor update,之前的数据都是在联合角度来看，actor的更新是对于每个agent本身的本地观察生效，而且遵循TD3的延迟更新
         # if self.train_step > 0 and self.train_step % self.args.save_rate == 0:
-        if self.train_step > 0:
+        if self.train_step > 0 and self.train_step % 2 == 0:
 
             # 如果确认更新
             u_pi = []
@@ -163,11 +219,10 @@ class MASAC:
             # TODO the grad of actor is not None
             actor_loss = ((self.alpha * log_pi) - min_qf_pi).mean()
 
-            #actor_loss = torch.mean(state_log_pi_i)
+            # actor_loss = torch.mean(state_log_pi_i)
 
             self.actor_optimizer.zero_grad()
             actor_loss.backward()
-            torch.nn.utils.clip_grad_norm_(self.policy.parameters(), max_norm=0.5)
             # for param in self.policy.parameters():
             #     if param.grad is None:
             #         print(f'Parameter actor:  - Gradient not computed')
@@ -191,19 +246,63 @@ class MASAC:
                 log_pi_a = einops.reduce(
                     state_log_pi_a, "c b a -> b a", "sum"
                 )
-            alpha_loss = (-self.log_alpha * (log_pi_a + self.target_entropy)).mean()
+            alpha_loss = -(self.log_alpha.exp() * (log_pi_a + self.target_entropy).detach()).mean()
 
             self.a_optimizer.zero_grad()
             alpha_loss.backward()
-            torch.nn.utils.clip_grad_norm_([self.log_alpha], max_norm=0.5)
-            self.log_alpha = torch.clamp(self.log_alpha, min=-10, max=2)
-            self.alpha = self.log_alpha.exp().item()
+            # self.log_alpha = torch.clamp(self.log_alpha, min=-10, max=2)
             self.a_optimizer.step()
+            self.alpha = self.log_alpha.exp().item()
             # 裁剪alpha值
-
-
 
         self._soft_update_target_network()
 
         if self.train_step > 0 and self.train_step % self.args.save_rate == 0:
             self.save_model(self.train_step, agent_id)
+
+    def save_safeNet(self, train_step, iterations):
+        num = str(train_step // self.args.save_rate)
+        model_path = os.path.join(self.args.save_dir, self.args.scenario_name)
+        if not os.path.exists(model_path):
+            os.makedirs(model_path)
+        model_path = os.path.join(model_path, 'agent_%d' % self.agent_id)
+        if not os.path.exists(model_path):
+            os.makedirs(model_path)
+
+        torch.save(self.actorSafe.state_dict(), model_path + '/' + str(iterations) + '_SafeActor_params.pkl')
+
+    def safeNetTrain(self, transitions):
+        for key in transitions.keys():
+            transitions[key] = torch.tensor(transitions[key], dtype=torch.float32).to(self.device)
+        r = transitions['r_%d' % self.agent_id]  # 训练时只需要自己的reward
+        #o, u, o_next, u_safe = [], [], [], []  # 用来装每个agent经验中的各项
+        o      = transitions['o_%d' % self.agent_id]
+        u      =  (transitions['u_%d' % self.agent_id])
+        u_safe = (transitions['u_safe_%d' % self.agent_id])
+        # for agent_id in range(self.args.n_agents):
+        #     o.append(transitions['o_%d' % agent_id])
+        #     u.append(transitions['u_%d' % agent_id])
+        #     # o_next.append(transitions['o_next_%d' % agent_id])
+        #     u_safe.append(transitions['u_safe_%d' % agent_id])
+        # for param in self.actor_network.parameters():
+        #     param.requires_grad = False
+        # for param in self.critic_network.parameters():
+        #     param.requires_grad = False
+
+
+        action_safe = self.actorSafe(o, u)
+
+        # with torch.no_grad():
+        #     u_rl = self.actor_network(o)
+
+        loss = (u_safe - action_safe).pow(2).mean()
+
+        self.SafeOptimizer.zero_grad()
+        loss.backward()
+        self.SafeOptimizer.step()
+
+        if self.train_step > 0 and self.train_step % self.args.save_rate == 0:
+            self.save_safeNet(self.train_step, self.iterations)
+        if self.train_step > 120000 or self.distill==True:
+            self.train_step += 1
+        return loss

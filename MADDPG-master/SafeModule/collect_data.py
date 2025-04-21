@@ -24,13 +24,14 @@ def main():
     output_dir = abs_path + '/data/'
 
     # Load the simulation scenario
-    scenario = scenarios.load("decentralized_safe.py").Scenario()
+    # scenario = scenarios.load("fto_assignTargets.py").Scenario()
+    scenario = scenarios.load("fto_assignTargets.py").Scenario()
     world = scenario.make_world()
 
     # Environment Setup
     env = MultiAgentEnv(world,
                         scenario.reset_world,
-                        scenario.reward,
+                        scenario.agent_reward,
                         scenario.observation,
                         info_callback=None,
                         constraint_callback=scenario.constraints,
