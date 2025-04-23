@@ -1,3 +1,6 @@
+# !!! The code is in the branch of simplified_version, not in this `main` branch
+
+
 # MTT-Attempt
 
 This is a pytorch implementation for multi-target tracking tasks in tailored environment based on [Multi-Agent Particle Environment(MPE)](https://github.com/openai/multiagent-particle-envs), the corresponding paper of MADDPG is [Multi-Agent Actor-Critic for Mixed Cooperative-Competitive Environments](https://arxiv.org/abs/1706.02275).
