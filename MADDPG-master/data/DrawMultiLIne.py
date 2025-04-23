@@ -79,6 +79,7 @@ def plotGraph(scheme=1):
         print(IQL_ESR[-1])
         print(maddpg_ESR[-1])
         print(maddpgs_ESR[-1])
+        print(masacsn_ESR[-1])
         # 滑动平均
         IQL_TEC_ma = moving_average(IQL_TEC)
         maddpg_TEC_ma = moving_average(maddpg_TEC)
@@ -98,6 +99,7 @@ def plotGraph(scheme=1):
         print(IQL_TEC_cummean[-1])
         print(maddpg_TEC_cummean[-1])
         print(maddpgsn_TEC_cummean[-1])
+        print(masacsn_TEC_cummean[-1])
         # REWARD CURVE
         plt.figure()
         plt.grid(True, linestyle=':', alpha=0.5)
