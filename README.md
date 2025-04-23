@@ -1,4 +1,4 @@
-# !!! The code is in the branch of simplified_version, not in this `main` branch
+# !!! The code is in the branch of `simplified_version`, not in this `main` branch
 
 
 # MTT-Attempt
